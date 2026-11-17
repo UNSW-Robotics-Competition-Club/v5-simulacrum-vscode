@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.11 (beta)
 
 - **Folders with spaces**: a robot preset or program in a folder whose path has spaces (`OneDrive - School`, `C:\Users\First Last`) works; it used to stop the robot sim or the program from starting.
 - **Installing WSL**: after installing WSL (or a missing distribution) from the prompt, Start sets the simulator up; it used to need a window reload.
