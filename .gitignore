@@ -1,3 +1,8 @@
 node_modules/
 out/
 *.vsix
+runtime/
+runtimes/
+dist/
+simsrc/
+out-runtime/

@@ -7,3 +7,8 @@ out/test/**
 tsconfig.json
 .gitignore
 node_modules/**
+bundle/**
+.github/**
+simsrc/**
+runtimes/**
+dist/**

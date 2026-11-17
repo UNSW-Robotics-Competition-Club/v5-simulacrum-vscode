@@ -1,0 +1,87 @@
+# Builds the self-contained extension: a simulator runtime per platform
+# (headless QEMU with the VEX models + its libraries, a standalone Python, the
+# simulator's scripts), smoke-tested on that platform, then one .vsix per VS
+# Code target. Download them from the run's Artifacts.
+#   darwin-arm64 / darwin-x64: Macs; win32-x64: Windows (the runtime runs in WSL)
+name: bundle
+
+on:
+  push:
+    branches: [macos, main]
+  workflow_dispatch:
+
+jobs:
+  runtime:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: macos-15, plat: darwin-arm64 }
+          - { os: macos-15-intel, plat: darwin-x64 }
+          - { os: ubuntu-22.04, plat: linux-x64 }     # older glibc: runs on Ubuntu 22.04+ in WSL
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: UNSW-Robotics-Competition-Club/v5-simulacrum
+          ref: macos
+          path: simsrc
+          token: ${{ secrets.SIM_REPO_TOKEN || github.token }}
+      - name: Build the runtime
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash bundle/build-runtime.sh simsrc out
+      - name: Smoke test (as the extension runs it, nothing else on PATH)
+        run: bash bundle/smoke.sh out/runtime-${{ matrix.plat }}.tar.gz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: runtime-${{ matrix.plat }}
+          path: out/runtime-${{ matrix.plat }}.tar.gz
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: smoke-${{ matrix.plat }}
+          path: smoke-screen.png
+          if-no-files-found: ignore
+
+  vsix:
+    needs: runtime
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npm test
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: runtime-*
+          path: runtimes
+          merge-multiple: true
+      - name: One .vsix per VS Code target
+        run: |
+          mkdir -p dist
+          for pair in darwin-arm64:darwin-arm64 darwin-x64:darwin-x64 win32-x64:linux-x64; do
+            target=${pair%%:*} plat=${pair##*:}
+            rm -rf runtime && mkdir runtime
+            cp "runtimes/runtime-$plat.tar.gz" runtime/runtime.tar.gz
+            npx vsce package --no-dependencies --target "$target" -o "dist/v5-simulacrum-vscode-$target.vsix"
+          done
+          rm -rf runtime
+          ls -l dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v5-simulacrum-vscode-darwin-arm64
+          path: dist/v5-simulacrum-vscode-darwin-arm64.vsix
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v5-simulacrum-vscode-darwin-x64
+          path: dist/v5-simulacrum-vscode-darwin-x64.vsix
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v5-simulacrum-vscode-win32-x64
+          path: dist/v5-simulacrum-vscode-win32-x64.vsix
