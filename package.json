@@ -2,7 +2,7 @@
   "name": "v5-simulacrum-vscode",
   "displayName": "V5 Brain Simulator",
   "description": "Run the VEX V5 brain simulator (v5-simulacrum) from VS Code on Windows or macOS: the brain's screen, the device dashboard and the field view as panes, a port map editor for the simulated robot, and running programs on it.",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "publisher": "unsw-robotics-competition-club",
   "license": "UNLICENSED",
   "repository": {

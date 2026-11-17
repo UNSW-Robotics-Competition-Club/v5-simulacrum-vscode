@@ -6,6 +6,7 @@ import * as vscode from 'vscode';
 
 import { Running } from '../simInstance';
 import { viewUrl } from '../settings';
+import { waitForPage } from '../waitForPage';
 
 export type Page = 'screen' | 'dashboard' | '';
 
@@ -35,51 +36,90 @@ export class WebPanel {
   }
 
   private shown?: string;
+  private target?: Running;
+  private loads = 0;                 // a newer load() supersedes a waiting one
 
   private constructor(readonly page: Page, readonly panel: vscode.WebviewPanel) {
     panel.onDidDispose(() => WebPanel.panels.delete(page));
     panel.webview.onDidReceiveMessage(m => {
       if (m?.type === 'command') void vscode.commands.executeCommand(m.command);
+      if (m?.type === 'reload') { this.shown = undefined; void this.load(this.target); }
+      if (m?.type === 'browser' && this.target) {
+        void vscode.env.openExternal(viewUrl(this.target.viewPort, this.page));
+      }
     });
   }
 
   private async load(target: Running | undefined): Promise<void> {
+    const load = ++this.loads;
+    this.target = target;
     if (!target) {
       this.shown = undefined;
       this.panel.title = TITLES[this.page];
-      this.panel.webview.html = this.message();
+      this.panel.webview.html = this.message('No simulator is running.', [['Start the simulator', 'command']]);
       return;
     }
     const uri = await vscode.env.asExternalUri(viewUrl(target.viewPort, this.page));
     const url = uri.toString(true);
     this.panel.title = `${TITLES[this.page]} (${target.id})`;
     if (url === this.shown) return;
+    // the robot sim's web server comes up a few seconds after the instance
+    // is announced: load the page only once it answers
+    this.shown = undefined;
+    this.panel.webview.html = this.message('Starting the simulator...', []);
+    const up = await waitForPage(`http://127.0.0.1:${target.viewPort}/${this.page}`, 60_000, 500,
+      () => load === this.loads);
+    if (load !== this.loads) return;
+    if (!up) {
+      this.panel.webview.html = this.message(
+        `The simulator's page (port ${target.viewPort}) isn't answering. See V5 Sim: Show Log.`,
+        [['Retry', 'reload'], ['Open in browser', 'browser']]);
+      return;
+    }
     this.shown = url;
     this.panel.webview.html = this.frame(url, `${uri.scheme}://${uri.authority}`);
   }
 
   private frame(url: string, origin: string): string {
-    const csp = `default-src 'none'; frame-src ${origin} http://localhost:* http://127.0.0.1:*; style-src 'unsafe-inline';`;
+    const nonce = newNonce();
+    const csp = `default-src 'none'; frame-src ${origin} http://localhost:* http://127.0.0.1:*; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';`;
     return `<!doctype html><html><head><meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="${csp}">
 <style>html,body{margin:0;padding:0;height:100%;overflow:hidden;background:#14161a}
-iframe{border:0;width:100%;height:100%;display:block}</style></head>
-<body><iframe src="${escapeAttr(url)}" allow="gamepad; clipboard-write"></iframe></body></html>`;
+iframe{border:0;width:100%;height:100%;display:block}
+#bar{position:fixed;top:6px;right:6px;display:flex;gap:4px;opacity:.35;transition:opacity .15s}
+#bar:hover{opacity:1}
+#bar button{font:12px system-ui,sans-serif;background:#2a2e35;color:#e8eaed;border:1px solid #3b4049;
+  border-radius:4px;padding:2px 8px;cursor:pointer}</style></head>
+<body><iframe src="${escapeAttr(url)}" allow="gamepad; clipboard-write"></iframe>
+<div id="bar"><button data-m="reload" title="Load the page again">Reload</button>
+<button data-m="browser" title="Open this page in your web browser">Open in browser</button></div>
+<script nonce="${nonce}">const vs = acquireVsCodeApi();
+document.querySelectorAll('#bar button').forEach(b => b.onclick = () => vs.postMessage({ type: b.dataset.m }));</script>
+</body></html>`;
   }
 
-  private message(): string {
-    const nonce = Math.random().toString(36).slice(2);
+  /** A message with buttons: [label, 'command' (start) | 'reload' | 'browser'] */
+  private message(text: string, buttons: [string, string][]): string {
+    const nonce = newNonce();
+    const html = buttons.map(([label, m]) => `<button data-m="${m}">${escapeAttr(label)}</button>`).join('');
     return `<!doctype html><html><head><meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';">
 <style>body{font-family:var(--vscode-font-family);color:var(--vscode-foreground);
-display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;margin:0;gap:12px}
+display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;margin:0;gap:12px;text-align:center}
+div.b{display:flex;gap:8px}
 button{background:var(--vscode-button-background);color:var(--vscode-button-foreground);border:0;padding:6px 14px;cursor:pointer}
 button:hover{background:var(--vscode-button-hoverBackground)}</style></head>
-<body><div>No simulator is running.</div><button id="go">Start the simulator</button>
+<body><div>${escapeAttr(text)}</div><div class="b">${html}</div>
 <script nonce="${nonce}">const vs = acquireVsCodeApi();
-document.getElementById('go').onclick = () => vs.postMessage({ type: 'command', command: 'v5sim.start' });</script>
+document.querySelectorAll('button').forEach(b => b.onclick = () => b.dataset.m === 'command'
+  ? vs.postMessage({ type: 'command', command: 'v5sim.start' }) : vs.postMessage({ type: b.dataset.m }));</script>
 </body></html>`;
   }
+}
+
+function newNonce(): string {
+  return Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
 }
 
 function escapeAttr(s: string): string {
