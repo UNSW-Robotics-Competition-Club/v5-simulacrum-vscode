@@ -26,10 +26,13 @@ Run a simulated **VEX V5 brain** inside VS Code and test your robot code without
 
 ## Get started
 
-1. Install the extension. While it's in beta: download the `.vsix` for your computer from the [latest release](https://github.com/UNSW-Robotics-Competition-Club/v5-simulacrum-vscode/releases), then in VS Code run **Extensions: Install from VSIX…** from the Command Palette.
-   - `win32-x64`: Windows
-   - `darwin-arm64`: a Mac with Apple Silicon (M1 or later)
-   - `darwin-x64`: an Intel Mac
+1. Install the extension: search **V5 Brain Simulator** in VS Code's Extensions view and click **Install**, or [open it on the Marketplace](https://marketplace.visualstudio.com/items?itemName=unsw-robotics-competition-club.v5-simulacrum-vscode). VS Code picks the build for your computer and keeps it up to date.
+   - From a terminal: `code --install-extension unsw-robotics-competition-club.v5-simulacrum-vscode`
+   - Offline, or for Cursor and VSCodium: download the `.vsix` for your computer (`win32-x64`, `darwin-arm64` for Apple Silicon, `darwin-x64` for Intel Macs) from the [latest release](https://github.com/UNSW-Robotics-Competition-Club/v5-simulacrum-vscode/releases), then run **Extensions: Install from VSIX…**.
+   - Prompt your team to install it: add it to your robot project's `.vscode/extensions.json`, and VS Code offers it to anyone who opens the project:
+     ```json
+     { "recommendations": ["unsw-robotics-competition-club.v5-simulacrum-vscode"] }
+     ```
 2. Click **V5 Sim** in the activity bar, then **Start the simulator**. The first start unpacks the simulator and downloads VEXos from VEX, which takes a few seconds. The brain screen then opens beside your editor.
 3. Open the other panes from the same view, or with **V5 Sim: Open Field View**, **Open Device Dashboard** and **Open Controller**. Drag any pane wherever you want it.
 
