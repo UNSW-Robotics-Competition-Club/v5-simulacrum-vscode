@@ -1,0 +1,206 @@
+{
+  "name": "v5-simulacrum-vscode",
+  "displayName": "V5 Brain Simulator",
+  "description": "Run the VEX V5 brain simulator (v5-sim) from VS Code: the brain's screen, the device dashboard and the field view as panes, and a port map editor for the simulated robot.",
+  "version": "0.1.0",
+  "publisher": "unsw-robotics-competition-club",
+  "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/UNSW-Robotics-Competition-Club/v5-simulacrum-vscode"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "vex",
+    "v5",
+    "robotics",
+    "simulator",
+    "pros",
+    "vexcode"
+  ],
+  "extensionKind": [
+    "workspace",
+    "ui"
+  ],
+  "main": "./out/src/extension.js",
+  "activationEvents": [
+    "workspaceContains:scripts/v5brain.sh",
+    "onLanguage:v5sim-args"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "v5sim.start",
+        "title": "Start",
+        "category": "V5 Sim",
+        "icon": "$(play)"
+      },
+      {
+        "command": "v5sim.stop",
+        "title": "Stop",
+        "category": "V5 Sim",
+        "icon": "$(debug-stop)"
+      },
+      {
+        "command": "v5sim.restart",
+        "title": "Restart",
+        "category": "V5 Sim",
+        "icon": "$(debug-restart)"
+      },
+      {
+        "command": "v5sim.openBrain",
+        "title": "Open Brain Screen",
+        "category": "V5 Sim",
+        "icon": "$(device-desktop)"
+      },
+      {
+        "command": "v5sim.openDashboard",
+        "title": "Open Device Dashboard",
+        "category": "V5 Sim",
+        "icon": "$(dashboard)"
+      },
+      {
+        "command": "v5sim.openField",
+        "title": "Open Field View",
+        "category": "V5 Sim",
+        "icon": "$(map)"
+      },
+      {
+        "command": "v5sim.configurePorts",
+        "title": "Configure Ports",
+        "category": "V5 Sim",
+        "icon": "$(plug)"
+      },
+      {
+        "command": "v5sim.showLog",
+        "title": "Show Log",
+        "category": "V5 Sim"
+      },
+      {
+        "command": "v5sim.menu",
+        "title": "Menu",
+        "category": "V5 Sim"
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "v5sim.configurePorts",
+          "when": "resourceExtname == .args",
+          "group": "navigation"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "v5sim.configurePorts",
+          "when": "resourceExtname == .args",
+          "group": "navigation"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "v5sim.menu",
+          "when": "false"
+        }
+      ]
+    },
+    "languages": [
+      {
+        "id": "v5sim-args",
+        "aliases": [
+          "V5 Sim robot preset"
+        ],
+        "extensions": [
+          ".args"
+        ]
+      }
+    ],
+    "configuration": {
+      "title": "V5 Brain Simulator",
+      "properties": {
+        "v5sim.repoPath": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Path to your clone of the **v5-sim** repository (the folder with `scripts/v5brain.sh`). Empty: a workspace folder that contains it. On Windows, the Windows path of the clone (e.g. `C:\\\\src\\\\v5-sim`)."
+        },
+        "v5sim.wslDistro": {
+          "type": "string",
+          "default": "Ubuntu-24.04",
+          "description": "On Windows: the WSL distribution the simulator runs in."
+        },
+        "v5sim.preset": {
+          "type": "string",
+          "default": "competition",
+          "markdownDescription": "The robot: a preset name from `sim/robots/` (e.g. `competition`, `rw-template`) or a path to any `.args` file."
+        },
+        "v5sim.program": {
+          "type": "string",
+          "default": "",
+          "description": "Optional: a V5 program (.bin) to install in slot 1 and start once the brain has booted."
+        },
+        "v5sim.slot": {
+          "type": "integer",
+          "default": 1,
+          "minimum": 1,
+          "maximum": 8,
+          "description": "The program slot for v5sim.program."
+        },
+        "v5sim.instanceId": {
+          "type": "string",
+          "default": "auto",
+          "pattern": "^(auto|[0-9])$",
+          "markdownDescription": "Simulator instance: `auto` (the first free one) or `0`..`9`. Instance N serves its pages on port 8765+N."
+        },
+        "v5sim.extraRobotArgs": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Robot options added to the preset, e.g. `--match 20` or `--physics mujoco`."
+        },
+        "v5sim.showBrainWindow": {
+          "type": "boolean",
+          "default": false,
+          "description": "Also open QEMU's own brain window. Off: the brain runs headless and its screen shows in VS Code."
+        },
+        "v5sim.usb": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "usbip",
+            "pty",
+            "none"
+          ],
+          "enumDescriptions": [
+            "On Windows with usbip-win2 installed, plug the brain into Windows USB (unless one already is); otherwise WSL serial ports",
+            "Always plug the brain into Windows USB through usbip-win2",
+            "WSL serial ports /tmp/ttyV5sys, /tmp/ttyV5user",
+            "No USB"
+          ],
+          "default": "auto",
+          "description": "How the brain's USB port is exposed, for uploading and the terminal."
+        },
+        "v5sim.openBrainOnStart": {
+          "type": "boolean",
+          "default": true,
+          "description": "Open the brain screen when a simulator starts."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p .",
+    "watch": "tsc -watch -p .",
+    "test": "tsc -p . && node --test out/test/*.test.js",
+    "package": "vsce package --no-dependencies"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "~1.85.0",
+    "@vscode/vsce": "^3.0.0",
+    "typescript": "^5.6.0"
+  }
+}
