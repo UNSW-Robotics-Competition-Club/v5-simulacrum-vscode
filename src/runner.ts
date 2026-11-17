@@ -5,6 +5,16 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 
 export const isWindows = process.platform === 'win32';
+export const isMac = process.platform === 'darwin';
+
+/** The environment for the scripts. VS Code started from the macOS Dock gets
+ *  a minimal PATH, without Homebrew (where the simulator's tools live). */
+function scriptEnv(): NodeJS.ProcessEnv {
+  if (!isMac) return process.env;
+  const extra = ['/opt/homebrew/bin', '/usr/local/bin'];
+  const path = (process.env.PATH ?? '/usr/bin:/bin').split(':');
+  return { ...process.env, PATH: [...extra.filter(p => !path.includes(p)), ...path].join(':') };
+}
 
 /** POSIX shell quoting. */
 export function sh(arg: string): string {
@@ -51,7 +61,7 @@ export class Runner {
   /** Start a long-running script; output streams through the process. */
   async spawnScript(script: string, args: string[]): Promise<ChildProcess> {
     const [cmd, argv] = this.argv(await this.scriptCommand(script, args));
-    return spawn(cmd, argv, { stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
+    return spawn(cmd, argv, { stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true, env: scriptEnv() });
   }
 
   /** Run a script to completion. */
@@ -67,7 +77,7 @@ export class Runner {
   shell(command: string, timeoutMs = 30_000): Promise<RunResult> {
     const [cmd, argv] = this.argv(command);
     return new Promise(resolve => {
-      execFile(cmd, argv, { timeout: timeoutMs, windowsHide: true, maxBuffer: 4 << 20 },
+      execFile(cmd, argv, { timeout: timeoutMs, windowsHide: true, maxBuffer: 4 << 20, env: scriptEnv() },
         (err, stdout, stderr) => {
           const code = err ? (typeof (err as any).code === 'number' ? (err as any).code : 1) : 0;
           resolve({ code, stdout: String(stdout), stderr: String(stderr || (err && !stderr ? err.message : '')) });
@@ -78,10 +88,24 @@ export class Runner {
 
 /** usbip-win2's client, as the host sees it (Windows, or /mnt/c from WSL). */
 export function usbipExe(): string | undefined {
+  if (isMac) return undefined;
   const exe = isWindows
     ? path.join(process.env.ProgramFiles ?? 'C:\\Program Files', 'USBip', 'usbip.exe')
     : '/mnt/c/Program Files/USBip/usbip.exe';
   return fs.existsSync(exe) ? exe : undefined;
+}
+
+/** Whether a command is on the scripts' PATH (e.g. pros). */
+export function onPath(command: string): Promise<boolean> {
+  return new Promise(resolve => {
+    execFile(isWindows ? 'where' : 'sh', isWindows ? [command] : ['-c', `command -v ${sh(command)}`],
+      { timeout: 10_000, windowsHide: true, env: scriptEnv() }, err => resolve(!err));
+  });
+}
+
+/** The environment terminals for the sim's tools get (Homebrew on macOS). */
+export function terminalEnv(): { [key: string]: string } | undefined {
+  return isMac ? { PATH: scriptEnv().PATH ?? '' } : undefined;
 }
 
 /** Whether a V5 brain (USB 2888:0501) is already attached through usbip-win2:

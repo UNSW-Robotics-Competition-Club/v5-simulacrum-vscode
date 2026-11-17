@@ -8,14 +8,16 @@ import { ChildProcess } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as vscode from 'vscode';
 
+import { Running, parseInstanceLine } from './instanceLine';
 import { Runner, usbipBrainAttached, usbipExe } from './runner';
 import { cfg, presetFile, repoPath } from './settings';
 
 export type State = 'stopped' | 'starting' | 'running' | 'stopping';
 
-export interface Running { id: number; viewPort: number }
+export type { Running };
 
-const INSTANCE_LINE = /\[v5brain\] instance (\d+):.*?field view http:\/\/localhost:(\d+)\//;
+/** A program to install and run for this start only (not saved to settings). */
+export interface RunOnce { program: string; slot: number }
 
 export class SimInstance implements vscode.Disposable {
   state: State = 'stopped';
@@ -40,7 +42,7 @@ export class SimInstance implements vscode.Disposable {
 
   get owned(): boolean { return !!this.proc; }
 
-  async start(): Promise<void> {
+  async start(once?: RunOnce): Promise<void> {
     if (this.state !== 'stopped') {
       vscode.window.showInformationMessage(`The simulator is already ${this.state}.`);
       return;
@@ -61,10 +63,11 @@ export class SimInstance implements vscode.Disposable {
       if (usb) args.push(usb);
       const extra = c.get<string>('extraRobotArgs', '').trim();
       args.push('--robot', `@${await runner.toUnix(preset)}${extra ? ' ' + extra : ''}`);
-      const program = c.get<string>('program', '').trim();
+      const program = once?.program ?? c.get<string>('program', '').trim();
       if (program) {
         if (!fs.existsSync(program)) throw new Error(`no such program: ${program}`);
-        args.push('--run', await runner.toUnix(program), '--slot', String(c.get<number>('slot', 1)));
+        const slot = once?.slot ?? c.get<number>('slot', 1);
+        args.push('--run', await runner.toUnix(program), '--slot', String(slot));
       }
       this.log.appendLine(`> v5brain.sh ${args.join(' ')}`);
       const proc = await runner.spawnScript('v5brain.sh', args);
@@ -74,10 +77,11 @@ export class SimInstance implements vscode.Disposable {
         const text = chunk.toString();
         this.log.append(text);
         buffer = (buffer + text).slice(-4096);
-        const m = INSTANCE_LINE.exec(buffer);
-        if (m && this.state === 'starting') {
+        // whole lines only: the instance line can arrive in two chunks
+        const running = parseInstanceLine(buffer.slice(0, buffer.lastIndexOf('\n') + 1));
+        if (running && this.state === 'starting') {
           buffer = '';
-          this.set('running', { id: +m[1], viewPort: +m[2] });
+          this.set('running', running);
         }
       };
       proc.stdout?.on('data', onData);
@@ -149,9 +153,9 @@ export class SimInstance implements vscode.Disposable {
     }
   }
 
-  async restart(): Promise<void> {
+  async restart(once?: RunOnce): Promise<void> {
     if (this.state !== 'stopped') await this.stop();
-    if (this.state === 'stopped') await this.start();
+    if (this.state === 'stopped') await this.start(once);
   }
 
   /** Instances running now (ours or started elsewhere): v5fleet.sh list. */

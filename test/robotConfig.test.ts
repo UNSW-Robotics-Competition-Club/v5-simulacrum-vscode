@@ -8,7 +8,8 @@ import * as path from 'node:path';
 import { options, parse, serialize, tokenize, validate } from '../src/robotConfig';
 
 // The v5-sim checkout, for its shipped presets and robot.py's own parser.
-const REPO = process.env.V5SIM_REPO ?? path.resolve(__dirname, '../../../v5-sim');
+const REPO = process.env.V5SIM_REPO ?? ['v5-simulacrum', 'v5-sim'].map(n => path.resolve(__dirname, '../../..', n))
+  .find(d => fs.existsSync(path.join(d, 'sim', 'robots'))) ?? '';
 const ROBOTS = path.join(REPO, 'sim', 'robots');
 const haveRepo = fs.existsSync(ROBOTS);
 const load = (ref: string) => {

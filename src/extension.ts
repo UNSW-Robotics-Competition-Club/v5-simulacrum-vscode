@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 
 import { PortsPanel } from './panels/portsPanel';
 import { Page, WebPanel } from './panels/webPanel';
+import { programTerminal, runProgram } from './runProgram';
 import { cfg } from './settings';
 import { SimInstance } from './simInstance';
 
@@ -59,6 +60,8 @@ export function activate(context: vscode.ExtensionContext): void {
       return PortsPanel.open(context, s, file?.endsWith('.args') ? file : undefined);
     },
     'v5sim.showLog': () => log.show(),
+    'v5sim.runProgram': (uri?: vscode.Uri) => runProgram(s, uri instanceof vscode.Uri ? uri.fsPath : undefined),
+    'v5sim.programTerminal': () => programTerminal(s),
     'v5sim.menu': async () => {
       const running = s.state === 'running';
       const items: (vscode.QuickPickItem & { cmd: string })[] = [
@@ -68,6 +71,8 @@ export function activate(context: vscode.ExtensionContext): void {
         { label: '$(device-desktop) Brain screen', cmd: 'v5sim.openBrain' },
         { label: '$(dashboard) Device dashboard', cmd: 'v5sim.openDashboard' },
         { label: '$(map) Field view', cmd: 'v5sim.openField' },
+        { label: '$(run) Run program on sim', cmd: 'v5sim.runProgram' },
+        { label: '$(terminal) Program terminal', cmd: 'v5sim.programTerminal' },
         { label: '$(plug) Configure ports', cmd: 'v5sim.configurePorts',
           description: cfg().get<string>('preset', '') },
         { label: '$(output) Log', cmd: 'v5sim.showLog' },

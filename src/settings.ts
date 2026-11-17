@@ -1,4 +1,5 @@
 import * as fs from 'node:fs';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 
@@ -17,17 +18,21 @@ export async function repoPath(ask = true): Promise<string | undefined> {
     if (!ask) return undefined;
     vscode.window.showErrorMessage(`v5sim.repoPath (${set}) has no scripts/v5brain.sh.`);
   }
+  const names = ['v5-simulacrum', 'v5-sim'];
+  const candidates: string[] = [];
   for (const f of vscode.workspace.workspaceFolders ?? []) {
-    for (const dir of [f.uri.fsPath, path.join(f.uri.fsPath, 'v5-sim'), path.join(path.dirname(f.uri.fsPath), 'v5-sim')]) {
-      if (isRepo(dir)) return dir;
-    }
+    candidates.push(f.uri.fsPath);
+    for (const n of names) candidates.push(path.join(f.uri.fsPath, n), path.join(path.dirname(f.uri.fsPath), n));
   }
+  // a clone in the home folder (a Mac, or VS Code in WSL)
+  if (process.platform !== 'win32') for (const n of names) candidates.push(path.join(os.homedir(), n));
+  for (const dir of candidates) if (isRepo(dir)) return dir;
   if (!ask) return undefined;
   const pick = await vscode.window.showWarningMessage(
-    'Where is your v5-sim checkout? (the folder with scripts/v5brain.sh)', 'Locate...');
+    'Where is your v5-simulacrum (or v5-sim) checkout? (the folder with scripts/v5brain.sh)', 'Locate...');
   if (pick !== 'Locate...') return undefined;
   const dirs = await vscode.window.showOpenDialog({ canSelectFolders: true, canSelectFiles: false,
-    openLabel: 'Use this v5-sim checkout' });
+    openLabel: 'Use this simulator checkout' });
   const dir = dirs?.[0]?.fsPath;
   if (!dir) return undefined;
   if (!isRepo(dir)) {

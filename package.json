@@ -1,8 +1,8 @@
 {
   "name": "v5-simulacrum-vscode",
   "displayName": "V5 Brain Simulator",
-  "description": "Run the VEX V5 brain simulator (v5-sim) from VS Code: the brain's screen, the device dashboard and the field view as panes, and a port map editor for the simulated robot.",
-  "version": "0.1.0",
+  "description": "Run the VEX V5 brain simulator (v5-simulacrum) from VS Code on Windows or macOS: the brain's screen, the device dashboard and the field view as panes, a port map editor for the simulated robot, and running programs on it.",
+  "version": "0.2.0",
   "publisher": "unsw-robotics-competition-club",
   "license": "UNLICENSED",
   "repository": {
@@ -30,7 +30,8 @@
   "main": "./out/src/extension.js",
   "activationEvents": [
     "workspaceContains:scripts/v5brain.sh",
-    "onLanguage:v5sim-args"
+    "onLanguage:v5sim-args",
+    "workspaceContains:project.pros"
   ],
   "contributes": {
     "commands": [
@@ -77,6 +78,18 @@
         "icon": "$(plug)"
       },
       {
+        "command": "v5sim.runProgram",
+        "title": "Run Program on Sim",
+        "category": "V5 Sim",
+        "icon": "$(run)"
+      },
+      {
+        "command": "v5sim.programTerminal",
+        "title": "Open Program Terminal",
+        "category": "V5 Sim",
+        "icon": "$(terminal)"
+      },
+      {
         "command": "v5sim.showLog",
         "title": "Show Log",
         "category": "V5 Sim"
@@ -99,6 +112,11 @@
         {
           "command": "v5sim.configurePorts",
           "when": "resourceExtname == .args",
+          "group": "navigation"
+        },
+        {
+          "command": "v5sim.runProgram",
+          "when": "resourceExtname == .bin",
           "group": "navigation"
         }
       ],
@@ -126,12 +144,12 @@
         "v5sim.repoPath": {
           "type": "string",
           "default": "",
-          "markdownDescription": "Path to your clone of the **v5-sim** repository (the folder with `scripts/v5brain.sh`). Empty: a workspace folder that contains it. On Windows, the Windows path of the clone (e.g. `C:\\\\src\\\\v5-sim`)."
+          "markdownDescription": "Path to your clone of the simulator (**v5-simulacrum**, or v5-sim; the folder with `scripts/v5brain.sh`). Empty: a workspace folder that contains it, one next to it, or `~/v5-simulacrum` on macOS/Linux. On Windows, the Windows path of the clone (e.g. `C:\\\\src\\\\v5-simulacrum`)."
         },
         "v5sim.wslDistro": {
           "type": "string",
           "default": "Ubuntu-24.04",
-          "description": "On Windows: the WSL distribution the simulator runs in."
+          "description": "On Windows: the WSL distribution the simulator runs in (not used on macOS)."
         },
         "v5sim.preset": {
           "type": "string",
@@ -175,7 +193,7 @@
             "none"
           ],
           "enumDescriptions": [
-            "On Windows with usbip-win2 installed, plug the brain into Windows USB (unless one already is); otherwise WSL serial ports",
+            "On Windows with usbip-win2 installed, plug the brain into Windows USB (unless one already is); otherwise (and on macOS) serial ports /tmp/ttyV5sys, /tmp/ttyV5user",
             "Always plug the brain into Windows USB through usbip-win2",
             "WSL serial ports /tmp/ttyV5sys, /tmp/ttyV5user",
             "No USB"
