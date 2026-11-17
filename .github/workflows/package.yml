@@ -1,0 +1,26 @@
+# Builds the extension's .vsix on every push. Download it from the run's
+# "Artifacts" section (Actions tab -> the run), unzip it, then in VS Code:
+# Extensions view -> ... -> Install from VSIX...
+name: package
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  vsix:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Compile and test (parser tests; the preset round-trips need a simulator checkout and are skipped)
+        run: npm test
+      - run: npm run package
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v5-simulacrum-vscode-vsix
+          path: "*.vsix"
+          if-no-files-found: error
