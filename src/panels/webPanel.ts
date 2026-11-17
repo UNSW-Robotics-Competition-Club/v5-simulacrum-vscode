@@ -8,9 +8,11 @@ import { Running } from '../simInstance';
 import { viewUrl } from '../settings';
 import { waitForPage } from '../waitForPage';
 
-export type Page = 'screen' | 'dashboard' | '';
+export type Page = 'screen' | 'dashboard' | 'controller' | '';
 
-const TITLES: Record<Page, string> = { screen: 'V5 Brain', dashboard: 'V5 Devices', '': 'V5 Field' };
+const TITLES: Record<Page, string> = {
+  screen: 'V5 Brain', dashboard: 'V5 Devices', controller: 'V5 Controller', '': 'V5 Field',
+};
 
 export class WebPanel {
   private static panels = new Map<Page, WebPanel>();

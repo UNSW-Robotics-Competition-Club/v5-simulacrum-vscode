@@ -60,6 +60,7 @@ export function activate(context: vscode.ExtensionContext): void {
     'v5sim.openBrain': open('screen'),
     'v5sim.openDashboard': open('dashboard'),
     'v5sim.openField': open(''),
+    'v5sim.openController': open('controller'),
     'v5sim.configurePorts': (uri?: vscode.Uri) => {
       const file = uri instanceof vscode.Uri ? uri.fsPath : vscode.window.activeTextEditor?.document.fileName;
       return PortsPanel.open(context, s, file?.endsWith('.args') ? file : undefined);
@@ -81,6 +82,7 @@ export function activate(context: vscode.ExtensionContext): void {
         { label: '$(device-desktop) Brain screen', cmd: 'v5sim.openBrain' },
         { label: '$(dashboard) Device dashboard', cmd: 'v5sim.openDashboard' },
         { label: '$(map) Field view', cmd: 'v5sim.openField' },
+        { label: '$(game) Controller', cmd: 'v5sim.openController' },
         { label: '$(run) Run program on sim', cmd: 'v5sim.runProgram' },
         { label: '$(terminal) Program terminal', cmd: 'v5sim.programTerminal' },
         { label: '$(plug) Configure ports', cmd: 'v5sim.configurePorts',

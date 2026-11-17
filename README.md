@@ -4,6 +4,7 @@ Runs the [V5 Simulacrum](https://github.com/UNSW-Robotics-Competition-Club/v5-si
 
 - **Brain screen** as a pane: the real VEXos screen. Click or drag on it to touch it. The buttons under it press the brain's button (tap = Back/Home, hold 1.5 s = stop the program, hold 5 s = power off).
 - **Device dashboard** and **field view** as panes: live motor and sensor readings, and the robot on the field. Click the field view, then drive with the keyboard or a gamepad.
+- **Controller** as a pane: the controller's screen (what your program prints there, such as an autonomous selector), its rumble, and its sticks and buttons as they're pressed. Click its buttons, or use the keys it lists, to work menus on the controller screen.
 - **Configure Ports**: the robot's port map. Pick the device on each of the 21 smart ports and the 3-wire ports A–H, set cartridges, reversals, tracking wheels, distance sensor mounts and the drivetrain, drag a device to move it, then **Apply & restart sim**. It reads and writes v5-sim's robot presets (`.args` files) and shows the problems the simulator would refuse before you start it.
 - **Run Program on Sim**: install a `.bin` in a slot and run it, or upload a PROS project with the PROS CLI, where VEXcode's Download button can't see the simulated brain (macOS, or WSL without usbip-win2). **Open Program Terminal** shows the program's output.
 - Start, stop and restart the simulator from the status bar (`V5 Sim`) or the command palette (`V5 Sim: ...`).
@@ -42,7 +43,7 @@ Or open this folder in VS Code and press F5 to run it in an Extension Developmen
 ## Use
 
 1. Click the **V5 Sim** icon in the activity bar (left), then **Start the simulator**; or the `V5 Sim` button in the status bar, or `V5 Sim: Start` in the Command Palette. The status bar shows `V5 Sim N` once instance N is up, and the brain screen opens beside your editor.
-2. `V5 Sim: Open Device Dashboard` / `Open Field View` for the other panes. Drag any pane to wherever you want it.
+2. `V5 Sim: Open Device Dashboard` / `Open Field View` / `Open Controller` for the other panes. Drag any pane to wherever you want it.
 3. Get your program onto it:
    - On Windows with usbip-win2, as usual: VEXcode and PROS see the simulated brain on USB, as with `V5Sim` (SIMULATOR.md section 5).
    - Anywhere, **V5 Sim: Run Program on Sim** (or right-click a `.bin` → Run Program on Sim): pick a `.bin` from your `build/` or `bin/` folder and a slot, and the sim restarts with it installed and running. In a PROS project with the `pros` CLI on your PATH, it can instead run `pros upload --slot N --after run . /tmp/ttyV5sys` in a terminal.

@@ -61,6 +61,6 @@ export function presetSetting(repo: string, file: string): string {
   return path.dirname(path.resolve(file)) === path.resolve(robots) ? path.basename(file, '.args') : file;
 }
 
-export function viewUrl(port: number, page: '' | 'screen' | 'dashboard'): vscode.Uri {
+export function viewUrl(port: number, page: '' | 'screen' | 'dashboard' | 'controller'): vscode.Uri {
   return vscode.Uri.parse(`http://localhost:${port}/${page}`);
 }
