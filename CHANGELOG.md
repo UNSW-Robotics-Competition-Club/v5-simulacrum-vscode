@@ -2,7 +2,10 @@
 
 ## 0.3.10 (beta)
 
-- Controller pane: the power button shows a proper power symbol.
+- **Stop is reliable**: stopping could randomly find the simulator "not running" and leave it running (a race in how the simulator checks that it's up).
+- **Controller pane**: keyboard shortcuts (Ctrl+C, Cmd+Z…) no longer press controller buttons, and can't leave one stuck down on a Mac. The power button shows a proper power symbol.
+- **Requirements**: macOS 15 (Sequoia) or later; the README said 13.
+- **Extension page**: screenshots load for everyone (hosted with the public simulator).
 
 ## 0.3.9 (beta)
 

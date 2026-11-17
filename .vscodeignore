@@ -13,6 +13,5 @@ simsrc/**
 runtimes/**
 dist/**
 .gstack/**
-media/screenshots/**
 media/icon.svg
 DEVELOPMENT.md

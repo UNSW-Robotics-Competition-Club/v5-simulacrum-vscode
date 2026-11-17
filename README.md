@@ -4,23 +4,23 @@ Run a simulated **VEX V5 brain** inside VS Code and test your robot code without
 
 > **Beta.** Built by the UNSW Robotics Competition Club on [V5 Simulacrum](https://github.com/UNSW-Robotics-Competition-Club/v5-simulacrum). Windows (through WSL) and macOS.
 
-![The field view: the simulated robot on a V5RC field, with its position, heading and speed, the competition switch and the controller's screen](media/screenshots/field.png)
+![The field view: the simulated robot on a V5RC field, with its position, heading and speed, the competition switch and the controller's screen](https://raw.githubusercontent.com/UNSW-Robotics-Competition-Club/v5-simulacrum/main/docs/images/vscode/field.png)
 
 ## What you get
 
 **The brain's screen**: the real VEXos screen. Click or drag on it to touch it, and use the brain's button underneath (tap for Back/Home, hold to stop the program).
 
-![The brain screen pane showing a program's autonomous selector](media/screenshots/brain.png)
+![The brain screen pane showing a program's autonomous selector](https://raw.githubusercontent.com/UNSW-Robotics-Competition-Club/v5-simulacrum/main/docs/images/vscode/brain.png)
 
 **The controller**: what your program prints on the controller screen (an auton selector, for instance), its rumble, and its sticks and buttons as they're pressed. Click its buttons, or use the keys it lists, to work menus on the controller screen.
 
-![The Controller pane: a V5 controller with its screen showing an auton selector](media/screenshots/controller.png)
+![The Controller pane: a V5 controller with its screen showing an auton selector](https://raw.githubusercontent.com/UNSW-Robotics-Competition-Club/v5-simulacrum/main/docs/images/vscode/controller.png)
 
 **The field**: the robot on the field, live. Click the field, then drive with the keyboard or a gamepad. Switch competition modes (driver, autonomous, disabled) or run a timed match from **Field control**.
 
 **The devices**: every motor's velocity and position against its target, with volts, amps, power and temperature. Every sensor's reading.
 
-![The Devices pane: live charts of each drive motor's velocity and position](media/screenshots/devices.png)
+![The Devices pane: live charts of each drive motor's velocity and position](https://raw.githubusercontent.com/UNSW-Robotics-Competition-Club/v5-simulacrum/main/docs/images/vscode/devices.png)
 
 **Your robot's ports**: **V5 Sim: Configure Ports** picks the device on each of the 21 smart ports and the 3-wire ports A–H. It also sets cartridges, reversals, tracking wheels, distance sensor mounts and the drivetrain. It flags anything the simulator would refuse before you start.
 
@@ -36,7 +36,7 @@ Run a simulated **VEX V5 brain** inside VS Code and test your robot code without
 ### Requirements
 
 - **Windows 10 or 11 with WSL.** The simulator runs in Ubuntu 24.04 under WSL; the extension offers to install WSL if it's missing.
-- **macOS 13 or later**, Apple Silicon or Intel.
+- **macOS 15 (Sequoia) or later**, Apple Silicon or Intel.
 - **Internet for the first start**, to download VEXos from VEX. VEX's firmware isn't ours to ship with the extension.
 
 Everything else (the emulator, Python, the robot simulator) comes inside the extension.
