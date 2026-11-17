@@ -20,6 +20,12 @@ The platform `.vsix` files carry a simulator runtime: headless QEMU with the VEX
 
 The extension unpacks the runtime once per version into `~/.v5-simulacrum/runtime-<version>` (inside WSL on Windows), removes older ones, and downloads VEXos into `~/.v5-simulacrum/firmware`.
 
+## Releasing and publishing
+
+1. Bump `version` in `package.json` and add it to `CHANGELOG.md`; push to `main`. The **bundle** workflow builds the three platform packages.
+2. Create a GitHub release `v<version>` on that commit with the three `.vsix` files from the bundle run attached (mark it pre-release for a beta).
+3. Marketplace: `.github/workflows/publish.yml` publishes the release's packages with trusted publishing (`vsce publish --oidc`); no token is stored. Publishing a full release runs it; **Actions → publish → Run workflow** publishes any tag (a beta, or to the pre-release channel). It runs in the `marketplace` environment, which waits for a maintainer's approval. The Marketplace side is a Trusted Publishing policy on the publisher: owner `UNSW-Robotics-Competition-Club`, repository `v5-simulacrum-vscode`, workflow `publish.yml`, environment `marketplace`.
+
 ## Using a simulator checkout
 
 A clone of v5-simulacrum set up with its `scripts/setup.sh` takes over from the bundled simulator when it's a workspace folder, next to one (`../v5-simulacrum`), in your home folder (`~/v5-simulacrum`), or set in `v5sim.repoPath` (its Windows path on Windows). The runtime-free `.vsix` from the **package** workflow only works that way. Panes also attach to a simulator started outside VS Code (`V5Sim start`, `./v5sim start`): with none started from VS Code, the open commands list the running instances.

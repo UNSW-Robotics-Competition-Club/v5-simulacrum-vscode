@@ -1,0 +1,71 @@
+# Publishes a GitHub release's .vsix packages to the VS Code Marketplace with
+# trusted publishing (OIDC): no token is stored anywhere. The Marketplace
+# trusts this workflow through a policy on the publisher
+# (marketplace.visualstudio.com/manage -> the publisher -> Trusted Publishing):
+#   repository owner UNSW-Robotics-Competition-Club, repository
+#   v5-simulacrum-vscode, workflow publish.yml, environment marketplace.
+# The `marketplace` environment can require an approval before it runs.
+#
+# It publishes exactly what the release carries (the bundle workflow's
+# platform packages, attached to the release), after checking there are three
+# and that their version is the release's tag.
+#   - publishing a full (not pre-) release on GitHub runs it;
+#   - Actions -> publish -> Run workflow publishes any tag, e.g. a beta.
+name: publish
+
+on:
+  release:
+    types: [released]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to publish, e.g. v0.3.10'
+        required: true
+      pre_release:
+        description: "Publish to the Marketplace's pre-release channel (users opt in to it)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: publish
+  cancel-in-progress: false
+
+jobs:
+  marketplace:
+    runs-on: ubuntu-24.04
+    environment: marketplace
+    steps:
+      - name: The release's packages
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name || inputs.tag }}
+        run: |
+          gh release download "$TAG" -R "$GITHUB_REPOSITORY" -p 'v5-simulacrum-vscode-*.vsix' -D dist
+          ls -l dist
+          python3 - "$TAG" dist/*.vsix <<'PY'
+          import json, re, sys, zipfile
+          tag, files = sys.argv[1], sys.argv[2:]
+          want = tag.removeprefix("v")
+          targets = set()
+          for f in files:
+              z = zipfile.ZipFile(f)
+              version = json.loads(z.read("extension/package.json"))["version"]
+              target = re.search(r'TargetPlatform="([^"]+)"', z.read("extension.vsixmanifest").decode()).group(1)
+              print(f, version, target)
+              if version != want:
+                  sys.exit(f"{f} is version {version}, the tag says {want}")
+              targets.add(target)
+          if targets != {"win32-x64", "darwin-arm64", "darwin-x64"}:
+              sys.exit(f"expected the win32-x64, darwin-arm64 and darwin-x64 packages, got {sorted(targets)}")
+          PY
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Publish (trusted publishing, OIDC)
+        env:
+          PRE: ${{ inputs.pre_release && '--pre-release' || '' }}
+        run: npx -y @vscode/vsce@4.1.1 publish --oidc $PRE --packagePath dist/*.vsix

@@ -7,3 +7,4 @@ dist/
 simsrc/
 out-runtime/
 .gstack/
+__pycache__/
