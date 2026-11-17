@@ -4,7 +4,7 @@
   "description": "Test VEX V5 robot code without a robot: a simulated V5 brain running VEXos, with its screen, controller, field and motors as panes. Windows (WSL) and macOS.",
   "version": "0.3.10",
   "publisher": "unsw-robotics-competition-club",
-  "license": "UNLICENSED",
+  "license": "LGPL-3.0-or-later",
   "preview": true,
   "icon": "media/icon.png",
   "galleryBanner": {

@@ -1,0 +1,38 @@
+V5 Brain Simulator for VS Code
+Copyright (C) 2026 UNSW Robotics Competition Club
+
+This program is free software: you can redistribute it and/or modify it
+under the terms of the GNU Lesser General Public License as published by the
+Free Software Foundation, either version 3 of the License, or (at your
+option) any later version.
+
+This program is distributed in the hope that it will be useful, but WITHOUT
+ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License for more
+details.
+
+The GNU Lesser General Public License is in LICENSE; it adds to the
+GNU General Public License in COPYING.
+
+
+Bundled software
+----------------
+
+The platform packages (win32-x64, darwin-arm64, darwin-x64) also carry a
+simulator runtime, runtime/runtime.tar.gz, made of separate programs under
+their own licenses. Their license texts and sources are listed inside it:
+
+- V5 Simulacrum, the simulator (runtime/sim/): LGPL-3.0-or-later, with
+  exceptions per directory (runtime/sim/NOTICE, LICENSE, COPYING,
+  THIRD_PARTY.md).
+  Source: https://github.com/UNSW-Robotics-Competition-Club/v5-simulacrum
+- QEMU with the VEX device models (runtime/qemu/bin/qemu-system-arm):
+  GPL-2.0-or-later. runtime/QEMU-SOURCE.txt names the QEMU release and the
+  v5-simulacrum commit it was built from.
+- glib, pixman and their dependencies (runtime/qemu/lib/): their own
+  licenses (LGPL, MIT).
+- CPython from python-build-standalone (runtime/python/): the Python
+  Software Foundation License (runtime/python/lib/python3.12/LICENSE.txt).
+
+VEX's firmware (VEXos) is not part of this package: the extension downloads
+it from VEX on first start.

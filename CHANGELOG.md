@@ -6,6 +6,7 @@
 - **Controller pane**: keyboard shortcuts (Ctrl+C, Cmd+Z…) no longer press controller buttons, and can't leave one stuck down on a Mac. The power button shows a proper power symbol.
 - **Requirements**: macOS 15 (Sequoia) or later; the README said 13.
 - **Extension page**: screenshots load for everyone (hosted with the public simulator).
+- **License**: LGPL-3.0-or-later, © UNSW Robotics Competition Club (was unlicensed). NOTICE lists the bundled simulator's components and their licenses.
 
 ## 0.3.9 (beta)
 

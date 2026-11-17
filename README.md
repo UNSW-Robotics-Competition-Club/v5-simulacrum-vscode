@@ -76,3 +76,7 @@ Everything else (the emulator, Python, the robot simulator) comes inside the ext
 ## Feedback
 
 Issues and suggestions: [GitHub issues](https://github.com/UNSW-Robotics-Competition-Club/v5-simulacrum-vscode/issues). Building the extension or working on the simulator: see [DEVELOPMENT.md](DEVELOPMENT.md).
+
+## License
+
+Copyright © 2026 UNSW Robotics Competition Club. The extension is **LGPL-3.0-or-later** (see [NOTICE](NOTICE), [LICENSE](LICENSE) and [COPYING](COPYING)). The simulator it bundles has its own licenses: [V5 Simulacrum](https://github.com/UNSW-Robotics-Competition-Club/v5-simulacrum) is LGPL-3.0-or-later, QEMU GPL-2.0-or-later, Python the PSF license. NOTICE lists them, and each package carries their license texts. VEX's firmware isn't included; the extension downloads it from VEX.
