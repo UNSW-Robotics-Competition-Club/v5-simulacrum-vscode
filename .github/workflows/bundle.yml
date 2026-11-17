@@ -33,8 +33,14 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: bash bundle/build-runtime.sh simsrc out
-      - name: Smoke test (as the extension runs it, nothing else on PATH)
-        run: bash bundle/smoke.sh out/runtime-${{ matrix.plat }}.tar.gz
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Smoke test through the extension's own setup code (nothing else on PATH)
+        run: |
+          npm ci
+          npx tsc -p .
+          node bundle/ext-smoke.js out/runtime-${{ matrix.plat }}.tar.gz
       - uses: actions/upload-artifact@v4
         with:
           name: runtime-${{ matrix.plat }}

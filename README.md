@@ -10,29 +10,34 @@ Runs the [V5 Simulacrum](https://github.com/UNSW-Robotics-Competition-Club/v5-si
 
 ## Requirements
 
-- A v5-simulacrum checkout (or the v5-sim dev repo), set up as in its SIMULATOR.md section 2: `bash scripts/setup.sh` in WSL Ubuntu-24.04 on Windows, or in Terminal on a Mac.
-- A simulator version with the `/screen` page (`sim/v5sim/brainscreen.py`). Older ones show the dashboard and field view, but not the brain screen.
-- Windows VS Code (the simulator runs through `wsl.exe`), VS Code connected to WSL (Remote-WSL), or VS Code on macOS (Apple Silicon or Intel). On macOS and in WSL the scripts run directly.
+- **macOS** 13 or later (Apple Silicon or Intel), or **Windows 10/11 with WSL** (the simulator runs in Linux there; the extension offers to install WSL with Ubuntu if it's missing).
+- An internet connection the first time: the extension downloads VEX's firmware (VEXos 1.1.5.0) from VEX's own server. It can't come with the extension: VEX's firmware isn't ours to redistribute.
+
+Nothing else: the platform builds of the extension include the simulator (QEMU with the VEX device models, Python, the robot simulator).
 
 ## Install
 
-From a `.vsix` file, in VS Code (no terminal needed):
+1. Get the `.vsix` for your computer from the latest **bundle** run (repository's **Actions** tab → **bundle** → the newest run → **Artifacts**), and unzip it:
+   - `v5-simulacrum-vscode-darwin-arm64`: a Mac with Apple Silicon (M1 or later);
+   - `v5-simulacrum-vscode-darwin-x64`: an Intel Mac;
+   - `v5-simulacrum-vscode-win32-x64`: Windows.
+2. In VS Code (no terminal needed):
+   - **Extensions** view (the squares icon in the left bar) → the **`…`** menu at its top → **Install from VSIX…** → pick the file;
+   - or right-click the `.vsix` in VS Code's Explorer → **Install Extension VSIX**;
+   - or the Command Palette (⇧⌘P on a Mac, Ctrl+Shift+P on Windows) → **Extensions: Install from VSIX…**.
+3. **V5 Sim: Start**. The first time, it unpacks the simulator into `~/.v5-simulacrum` (inside WSL on Windows) and downloads VEXos, in a few seconds; then the brain screen opens. **V5 Sim: Repair Simulator** does that again if anything goes wrong.
 
-- **Extensions** view (the squares icon in the left bar) → the **`…`** menu at its top → **Install from VSIX…** → pick the file;
-- or right-click the `.vsix` in VS Code's Explorer → **Install Extension VSIX**;
-- or the Command Palette (⇧⌘P on a Mac, Ctrl+Shift+P on Windows) → **Extensions: Install from VSIX…**.
+### For simulator developers
 
-Reload the window if VS Code asks. To build the `.vsix` yourself, or install from the command line:
+A clone of v5-simulacrum (or v5-sim) set up with its `scripts/setup.sh` takes over from the bundled simulator when it's a workspace folder, next to one (`../v5-simulacrum`), in your home folder (`~/v5-simulacrum`) or set in `v5sim.repoPath` (its Windows path on Windows). The runtime-free `.vsix` from the **package** workflow only works that way. To build it yourself:
 
 ```sh
 npm ci
-npm run package          # -> v5-simulacrum-vscode-<version>.vsix
+npm run package          # -> v5-simulacrum-vscode-<version>.vsix (no bundled simulator)
 code --install-extension v5-simulacrum-vscode-*.vsix
 ```
 
-Or open this folder in VS Code and press F5 to run it in an Extension Development Host.
-
-If the simulator checkout isn't one of your workspace folders, next to one (`../v5-simulacrum`) or in your home folder (`~/v5-simulacrum` on a Mac), set `v5sim.repoPath`. Use its Windows path on Windows. The extension also asks for it the first time.
+Or open this folder in VS Code and press F5 to run it in an Extension Development Host. The bundled runtimes are built by `bundle/build-runtime.sh` (see `.github/workflows/bundle.yml`).
 
 ## Use
 
@@ -71,7 +76,7 @@ The panes also work with a simulator started elsewhere (`V5Sim start`): with non
 
 ## macOS notes
 
-- Install the simulator first: clone v5-simulacrum to a path without spaces, then run `bash scripts/setup.sh` in Terminal (it needs Homebrew and `xcode-select --install`). `./v5sim competition` there checks that it works outside VS Code.
+- The darwin `.vsix` files include the simulator: no Homebrew, Xcode tools or setup script needed. Real motor firmware (`--motor-fw`) doesn't run properly on a Mac (see the simulator's SIMULATOR.md section 7); the default motor model does.
 - The brain's USB is two serial ports, `/tmp/ttyV5sys` (uploads) and `/tmp/ttyV5user` (program output); instance N's are in `/tmp/v5simN/`. VEXcode's Download button can't see them, so use Run Program on Sim, or the PROS CLI with the port given.
 - VS Code started from the Dock doesn't get your shell's PATH; the extension adds Homebrew's folders (`/opt/homebrew/bin`, `/usr/local/bin`) for the simulator's scripts and its terminals.
 - `v5sim.wslDistro` isn't used.

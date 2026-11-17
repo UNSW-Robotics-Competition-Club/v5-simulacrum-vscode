@@ -21,12 +21,30 @@ export function sh(arg: string): string {
   return /^[\w@%+=:,./-]+$/.test(arg) ? arg : `'${arg.replace(/'/g, `'\\''`)}'`;
 }
 
+/** `K=V ... ` assignments in front of a command in bash -c (they reach the
+ *  script in WSL too, where WSLENV wouldn't carry them). */
+export function envPrefix(opts: RunnerOptions): string {
+  const parts = Object.entries(opts.env ?? {}).map(([k, v]) => `${k}=${sh(v)}`);
+  if (opts.pathPrefix) parts.push(`PATH=${sh(opts.pathPrefix)}:"$PATH"`);
+  return parts.length ? parts.join(' ') + ' ' : '';
+}
+
 export interface RunResult { code: number; stdout: string; stderr: string }
+
+export interface RunnerOptions {
+  /** the simulator's root as its Linux/macOS sees it (else toUnix(repo)) */
+  unixRoot?: string;
+  /** variables for the scripts (bundled mode) */
+  env?: Record<string, string>;
+  /** a folder put first on the scripts' PATH (the bundled Python) */
+  pathPrefix?: string;
+}
 
 export class Runner {
   private unixRepo?: Promise<string>;
 
-  constructor(readonly repo: string, readonly distro: string) {}
+  /** repo: the simulator's root (scripts/, sim/) as this host sees it */
+  constructor(readonly repo: string, readonly distro: string, readonly opts: RunnerOptions = {}) {}
 
   /** argv for running a shell command line in the simulator's Linux. */
   private argv(command: string): [string, string[]] {
@@ -46,6 +64,7 @@ export class Runner {
   }
 
   repoUnix(): Promise<string> {
+    if (this.opts.unixRoot) return Promise.resolve(this.opts.unixRoot);
     if (!this.unixRepo) {
       this.unixRepo = this.toUnix(this.repo);
       this.unixRepo.catch(() => (this.unixRepo = undefined));
@@ -55,7 +74,7 @@ export class Runner {
 
   async scriptCommand(script: string, args: string[]): Promise<string> {
     const repo = await this.repoUnix();
-    return ['bash', `${repo}/scripts/${script}`, ...args].map(sh).join(' ');
+    return envPrefix(this.opts) + ['bash', `${repo}/scripts/${script}`, ...args].map(sh).join(' ');
   }
 
   /** Start a long-running script; output streams through the process. */

@@ -2,7 +2,7 @@
   "name": "v5-simulacrum-vscode",
   "displayName": "V5 Brain Simulator",
   "description": "Run the VEX V5 brain simulator (v5-simulacrum) from VS Code on Windows or macOS: the brain's screen, the device dashboard and the field view as panes, a port map editor for the simulated robot, and running programs on it.",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "publisher": "unsw-robotics-competition-club",
   "license": "UNLICENSED",
   "repository": {
@@ -98,6 +98,11 @@
         "command": "v5sim.menu",
         "title": "Menu",
         "category": "V5 Sim"
+      },
+      {
+        "command": "v5sim.repair",
+        "title": "Repair Simulator (unpack again, check VEXos)",
+        "category": "V5 Sim"
       }
     ],
     "menus": {
@@ -144,7 +149,7 @@
         "v5sim.repoPath": {
           "type": "string",
           "default": "",
-          "markdownDescription": "Path to your clone of the simulator (**v5-simulacrum**, or v5-sim; the folder with `scripts/v5brain.sh`). Empty: a workspace folder that contains it, one next to it, or `~/v5-simulacrum` on macOS/Linux. On Windows, the Windows path of the clone (e.g. `C:\\\\src\\\\v5-simulacrum`)."
+          "markdownDescription": "For developers: a clone of the simulator (**v5-simulacrum**, or v5-sim; the folder with `scripts/v5brain.sh`) set up with `scripts/setup.sh`. Empty: a workspace folder that contains one, one next to it, or `~/v5-simulacrum`; without any, the simulator bundled with this extension is used (platform builds of the extension include it). On Windows, the Windows path of the clone."
         },
         "v5sim.wslDistro": {
           "type": "string",
@@ -182,7 +187,7 @@
         "v5sim.showBrainWindow": {
           "type": "boolean",
           "default": false,
-          "description": "Also open QEMU's own brain window. Off: the brain runs headless and its screen shows in VS Code."
+          "description": "Also open QEMU's own brain window (a simulator checkout only; the bundled simulator shows its screen in VS Code)."
         },
         "v5sim.usb": {
           "type": "string",

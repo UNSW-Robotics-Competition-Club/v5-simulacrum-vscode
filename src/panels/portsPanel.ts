@@ -7,7 +7,8 @@ import * as vscode from 'vscode';
 
 import { Issue, RobotConfig, options, parse, serialize, tokenize, validate } from '../robotConfig';
 import { SimInstance } from '../simInstance';
-import { cfg, presetFile, presetSetting, repoPath } from '../settings';
+import { mode, simRunner } from '../runtime';
+import { cfg, presetFile, presetSetting } from '../settings';
 
 interface Preset { label: string; description: string; file: string }
 
@@ -15,7 +16,7 @@ export class PortsPanel {
   private static current?: PortsPanel;
 
   static async open(context: vscode.ExtensionContext, sim: SimInstance, file?: string): Promise<void> {
-    const repo = await repoPath();
+    const repo = (await simRunner())?.repo;
     if (!repo) return;
     const target = file ?? presetFile(repo);
     if (PortsPanel.current) {
@@ -152,7 +153,10 @@ export class PortsPanel {
     }
     let file = as ? undefined : this.file;
     const shipped = file && path.dirname(path.resolve(file)) === path.resolve(this.repo, 'sim', 'robots');
-    if (file && shipped && this.dirty) {
+    if (file && shipped && mode() === 'bundled') {
+      // the bundled presets are replaced on each extension update
+      file = undefined;
+    } else if (file && shipped && this.dirty) {
       const pick = await vscode.window.showWarningMessage(
         `${path.basename(file)} is one of v5-sim's shipped presets. Overwrite it, or save a copy?`,
         { modal: true }, 'Overwrite', 'Save a copy...');

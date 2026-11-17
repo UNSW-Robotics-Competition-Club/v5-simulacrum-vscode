@@ -10,7 +10,8 @@ import * as vscode from 'vscode';
 
 import { Running, parseInstanceLine } from './instanceLine';
 import { Runner, usbipBrainAttached, usbipExe } from './runner';
-import { cfg, presetFile, repoPath } from './settings';
+import { mode, simRunner } from './runtime';
+import { cfg, presetFile } from './settings';
 
 export type State = 'stopped' | 'starting' | 'running' | 'stopping';
 
@@ -35,9 +36,8 @@ export class SimInstance implements vscode.Disposable {
     this.changed.fire(this);
   }
 
-  async runner(): Promise<Runner | undefined> {
-    const repo = await repoPath();
-    return repo ? new Runner(repo, cfg().get('wslDistro', 'Ubuntu-24.04')) : undefined;
+  runner(): Promise<Runner | undefined> {
+    return simRunner();
   }
 
   get owned(): boolean { return !!this.proc; }
@@ -58,7 +58,8 @@ export class SimInstance implements vscode.Disposable {
     this.set('starting', undefined);
     try {
       const args = ['--id', c.get<string>('instanceId', 'auto') || 'auto'];
-      if (!c.get<boolean>('showBrainWindow', false)) args.push('--headless');
+      // the bundled QEMU has no window of its own: its screen is the VS Code pane
+      if (mode() === 'bundled' || !c.get<boolean>('showBrainWindow', false)) args.push('--headless');
       const usb = await this.usbOption(c.get<string>('usb', 'auto'));
       if (usb) args.push(usb);
       const extra = c.get<string>('extraRobotArgs', '').trim();

@@ -3,6 +3,7 @@ import * as vscode from 'vscode';
 import { PortsPanel } from './panels/portsPanel';
 import { Page, WebPanel } from './panels/webPanel';
 import { programTerminal, runProgram } from './runProgram';
+import { initRuntime, simRunner } from './runtime';
 import { cfg } from './settings';
 import { SimInstance } from './simInstance';
 
@@ -10,6 +11,7 @@ let sim: SimInstance | undefined;
 
 export function activate(context: vscode.ExtensionContext): void {
   const log = vscode.window.createOutputChannel('V5 Sim');
+  initRuntime(context, log);
   sim = new SimInstance(log);
   const s = sim;
 
@@ -60,6 +62,10 @@ export function activate(context: vscode.ExtensionContext): void {
       return PortsPanel.open(context, s, file?.endsWith('.args') ? file : undefined);
     },
     'v5sim.showLog': () => log.show(),
+    'v5sim.repair': async () => {
+      if (s.state !== 'stopped') await s.stop();
+      if (await simRunner(true)) vscode.window.showInformationMessage('The V5 simulator is set up.');
+    },
     'v5sim.runProgram': (uri?: vscode.Uri) => runProgram(s, uri instanceof vscode.Uri ? uri.fsPath : undefined),
     'v5sim.programTerminal': () => programTerminal(s),
     'v5sim.menu': async () => {
