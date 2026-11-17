@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.10 (beta)
+
+- Controller pane: the power button shows a proper power symbol.
+
 ## 0.3.9 (beta)
 
 - **Controller pane** (`V5 Sim: Open Controller`): a drawn V5 controller with its live screen (what your program prints, such as an auton selector), rumble, sticks and buttons. Click its buttons, or use the keys it lists, to work menus on the controller screen.
