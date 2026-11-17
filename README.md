@@ -16,6 +16,14 @@ Runs the [V5 Simulacrum](https://github.com/UNSW-Robotics-Competition-Club/v5-si
 
 ## Install
 
+From a `.vsix` file, in VS Code (no terminal needed):
+
+- **Extensions** view (the squares icon in the left bar) → the **`…`** menu at its top → **Install from VSIX…** → pick the file;
+- or right-click the `.vsix` in VS Code's Explorer → **Install Extension VSIX**;
+- or the Command Palette (⇧⌘P on a Mac, Ctrl+Shift+P on Windows) → **Extensions: Install from VSIX…**.
+
+Reload the window if VS Code asks. To build the `.vsix` yourself, or install from the command line:
+
 ```sh
 npm ci
 npm run package          # -> v5-simulacrum-vscode-<version>.vsix
