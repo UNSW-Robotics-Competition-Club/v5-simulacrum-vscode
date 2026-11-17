@@ -6,3 +6,4 @@ runtimes/
 dist/
 simsrc/
 out-runtime/
+.gstack/

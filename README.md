@@ -81,6 +81,12 @@ The panes also work with a simulator started elsewhere (`V5Sim start`): with non
 - VS Code started from the Dock doesn't get your shell's PATH; the extension adds Homebrew's folders (`/opt/homebrew/bin`, `/usr/local/bin`) for the simulator's scripts and its terminals.
 - `v5sim.wslDistro` isn't used.
 
+### No brain on Windows USB?
+
+The simulated brain shows up on Windows USB only with the [usbip-win2](https://github.com/vadimgrn/usbip-win2) driver. Without it the simulator uses WSL serial ports, and VEXcode's Download button can't see the brain. Starting the sim on Windows without the driver offers **Install USB driver**, and the command `V5 Sim: Install USB Driver` does the same. It runs `winget install vadimgrn.usbip-win2 --version 0.9.7.8` in a terminal: allow the Windows admin prompt and follow the installer, then restart the sim. Without winget, it opens the release page for that version.
+
+With usbip-win2 the simulator attaches its brain by running Windows' `usbip.exe` from WSL. If WSL can't run Windows programs (Ubuntu 24.04's `systemd-binfmt` can unregister WSL interop at boot; `usbip.exe` then fails with "Exec format error"), the extension attaches the brain from Windows itself, detaches it again on stop, and offers **Fix WSL**. That registers interop again now and in `/etc/binfmt.d/WSLInterop.conf` so it survives reboots.
+
 ## Stopping safely
 
 The extension stops a simulator only through `scripts/v5fleet.sh stop <id>`, a graceful QEMU quit that detaches the USB/IP brain cleanly. It never kills the processes: an ungraceful detach can crash Windows through the usbip-win2 driver (simulator README, "Cautions"). If VS Code is killed, stop the instance with `V5Sim stop <id>` (Windows) or `./v5sim stop <id>` (macOS).

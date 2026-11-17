@@ -93,8 +93,25 @@ export class Runner {
     return this.shell(argv.map(sh).join(' '), timeoutMs);
   }
 
+  /** Whether the simulator's Linux can run this Windows .exe (WSL interop:
+   *  v5brain.sh runs usbip.exe to attach the brain). Always true off Windows. */
+  async canRunWindowsExe(exe: string): Promise<boolean> {
+    if (!isWindows) return true;
+    const r = await this.exec([await this.toUnix(exe), '--version'], 15_000);
+    return r.code === 0;
+  }
+
+  /** Run a command line as root in the WSL distro (no password: wsl -u root). */
+  rootShell(command: string, timeoutMs = 30_000): Promise<RunResult> {
+    return this.run('wsl.exe', ['-d', this.distro, '-u', 'root', '-e', 'sh', '-c', command], timeoutMs);
+  }
+
   shell(command: string, timeoutMs = 30_000): Promise<RunResult> {
     const [cmd, argv] = this.argv(command);
+    return this.run(cmd, argv, timeoutMs);
+  }
+
+  private run(cmd: string, argv: string[], timeoutMs: number): Promise<RunResult> {
     return new Promise(resolve => {
       execFile(cmd, argv, { timeout: timeoutMs, windowsHide: true, maxBuffer: 4 << 20, env: scriptEnv() },
         (err, stdout, stderr) => {

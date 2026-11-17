@@ -9,6 +9,7 @@ export interface Running {
   viewPort: number;
   ttySys?: string;             // the brain's USB serial ports (--usb)
   ttyUser?: string;
+  usbipPort?: number;          // its USB/IP server on localhost (--usbip)
 }
 
 const LINE = /\[v5brain\] instance (\d+):[^\n]*/;
@@ -24,5 +25,7 @@ export function parseInstanceLine(text: string): Running | undefined {
     out.ttySys = usb[1];
     out.ttyUser = usb[2];
   }
+  const usbip = /USB\/IP localhost:(\d+)/.exec(line[0]);
+  if (usbip) out.usbipPort = +usbip[1];
   return out;
 }

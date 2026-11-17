@@ -9,9 +9,15 @@ import * as fs from 'node:fs';
 import * as vscode from 'vscode';
 
 import { Running, parseInstanceLine } from './instanceLine';
-import { Runner, usbipBrainAttached, usbipExe } from './runner';
+import { Runner, isWindows, usbipBrainAttached, usbipExe } from './runner';
 import { mode, simRunner } from './runtime';
 import { cfg, presetFile } from './settings';
+import { OutputBudget } from './outputBudget';
+import { offerUsbDriver } from './usbDriver';
+import { INTEROP_REPAIR, attachBrain, detachBrain } from './usbip';
+
+/** How long stop() waits for an attach still in flight before going on. */
+const ATTACH_WAIT_ON_STOP_MS = 5_000;
 
 export type State = 'stopped' | 'starting' | 'running' | 'stopping';
 
@@ -25,6 +31,12 @@ export class SimInstance implements vscode.Disposable {
   current?: Running;
   private proc?: ChildProcess;
   private exited?: Promise<void>;
+  /** WSL can't run usbip.exe, so we attach the brain from Windows ourselves */
+  private attachFromWindows = false;
+  /** the Windows usbip port we attached the brain to (we detach it) */
+  private vport?: number;
+  /** our attach while it runs: stop and exit wait for it, then detach */
+  private attaching?: Promise<void>;
   private readonly changed = new vscode.EventEmitter<SimInstance>();
   readonly onDidChange = this.changed.event;
 
@@ -60,7 +72,8 @@ export class SimInstance implements vscode.Disposable {
       const args = ['--id', c.get<string>('instanceId', 'auto') || 'auto'];
       // the bundled QEMU has no window of its own: its screen is the VS Code pane
       if (mode() === 'bundled' || !c.get<boolean>('showBrainWindow', false)) args.push('--headless');
-      const usb = await this.usbOption(c.get<string>('usb', 'auto'));
+      this.attachFromWindows = false;
+      const usb = await this.usbOption(c.get<string>('usb', 'auto'), runner);
       if (usb) args.push(usb);
       const extra = c.get<string>('extraRobotArgs', '').trim();
       args.push('--robot', `@${await runner.toUnix(preset)}${extra ? ' ' + extra : ''}`);
@@ -74,15 +87,20 @@ export class SimInstance implements vscode.Disposable {
       const proc = await runner.spawnScript('v5brain.sh', args);
       this.proc = proc;
       let buffer = '';
+      const budget = new OutputBudget();
       const onData = (chunk: Buffer) => {
         const text = chunk.toString();
-        this.log.append(text);
+        const shown = budget.take(text, Date.now());
+        if (shown) this.log.append(shown);
         buffer = (buffer + text).slice(-4096);
         // whole lines only: the instance line can arrive in two chunks
         const running = parseInstanceLine(buffer.slice(0, buffer.lastIndexOf('\n') + 1));
         if (running && this.state === 'starting') {
           buffer = '';
           this.set('running', running);
+          if (this.attachFromWindows && running.usbipPort) {
+            this.attaching = this.attachUsb(running.usbipPort, runner, proc);
+          }
         }
       };
       proc.stdout?.on('data', onData);
@@ -93,7 +111,13 @@ export class SimInstance implements vscode.Disposable {
           this.proc = undefined;
           this.set('stopped', undefined);
         }
-        resolve();
+        // The USB/IP server is gone with the sim, so a port we attached is
+        // NOT detached now (detaching after the server is gone can bugcheck
+        // usbip-win2); stop() detaches before the sim quits.
+        void Promise.resolve(this.attaching)
+          .catch(() => undefined)
+          .then(() => this.forgetUsb('the simulator exited before its brain was taken off Windows USB'))
+          .finally(() => resolve());
       }));
       proc.on('error', e => {
         this.log.appendLine(`[v5sim] couldn't start: ${e.message}`);
@@ -106,17 +130,87 @@ export class SimInstance implements vscode.Disposable {
   }
 
   /** --usbip / --usb / nothing, as V5Sim.cmd picks it. */
-  private async usbOption(mode: string): Promise<string | undefined> {
+  private async usbOption(mode: string, runner: Runner): Promise<string | undefined> {
     if (mode === 'none') return undefined;
     if (mode === 'pty') return '--usb';
     const exe = usbipExe();
-    if (mode === 'usbip') return '--usbip';
+    if (isWindows && !exe) void offerUsbDriver(); // not awaited: starting goes on
+    if (mode === 'usbip') return this.usbip(exe, runner);
     if (!exe) return '--usb';
     if (await usbipBrainAttached(exe)) {
       this.log.appendLine('[v5sim] a V5 brain is already on Windows USB (usbip-win2 takes one at a time): using WSL serial ports');
       return '--usb';
     }
+    return this.usbip(exe, runner);
+  }
+
+  /** --usbip; when WSL can't run usbip.exe (interop unregistered, e.g. by
+   *  systemd-binfmt), v5brain.sh can't attach the brain, so we will. */
+  private async usbip(exe: string | undefined, runner: Runner): Promise<string> {
+    if (isWindows && exe && !(await runner.canRunWindowsExe(exe))) {
+      this.log.appendLine("[v5sim] WSL can't run Windows programs (WSL interop is off), so v5brain.sh can't attach the brain: attaching it from Windows");
+      this.attachFromWindows = true;
+    }
     return '--usbip';
+  }
+
+  /** Attach the run's brain to Windows USB from here (usbip-win2). The port
+   *  is recorded even if a stop began meanwhile: stop() and the exit handler
+   *  wait for this, then detach it while the USB/IP server still answers. */
+  private async attachUsb(tcpPort: number, runner: Runner, proc: ChildProcess): Promise<void> {
+    const exe = usbipExe();
+    if (!exe) return;
+    this.log.appendLine(`> usbip attach -r localhost -b 1-1 (port ${tcpPort})`);
+    const r = await attachBrain(exe, tcpPort, () => this.proc === proc && this.state === 'running');
+    this.log.appendLine(`[v5sim] Windows: ${r.output}`);
+    if (r.vport === undefined) {
+      if (this.proc === proc && this.state === 'running') {
+        vscode.window.showErrorMessage(`The simulated brain isn't on Windows USB: ${r.output}`);
+      }
+      return;
+    }
+    if (this.proc !== proc) {
+      // this run is over (or a newer one started) and its server with it:
+      // leave the port alone rather than detach it from a dead server
+      this.log.appendLine(`[v5sim] attached usbip port ${r.vport} after the simulator had exited; left as is`);
+      return;
+    }
+    this.vport = r.vport;
+    if (this.state === 'running') void this.offerInteropRepair(runner, exe);
+  }
+
+  /** Drop a port we can no longer detach safely, saying so. */
+  private forgetUsb(why: string): void {
+    if (this.vport === undefined) return;
+    this.log.appendLine(`[v5sim] ${why} (usbip port ${this.vport}); left as is`);
+    this.vport = undefined;
+  }
+
+  private async detachUsb(): Promise<void> {
+    const exe = usbipExe();
+    const vport = this.vport;
+    this.vport = undefined;
+    if (!exe || vport === undefined) return;
+    this.log.appendLine(`> usbip detach -p ${vport}`);
+    const r = await detachBrain(exe, vport);
+    this.log.appendLine(`[v5sim] Windows: ${r.output}`);
+  }
+
+  private async offerInteropRepair(runner: Runner, exe: string): Promise<void> {
+    const fix = 'Fix WSL';
+    const pick = await vscode.window.showWarningMessage(
+      `WSL in ${runner.distro} can't run Windows programs (WSL interop is off, usually after systemd-binfmt resets it at boot). ` +
+      'The extension attached the simulated brain to USB itself. Fix WSL so the simulator can do it, now and after reboots?',
+      fix);
+    if (pick !== fix) return;
+    const r = await runner.rootShell(INTEROP_REPAIR);
+    this.log.appendLine(`> wsl -u root: ${INTEROP_REPAIR}`);
+    if (r.stdout || r.stderr) this.log.append(r.stdout + r.stderr);
+    if (r.code === 0 && await runner.canRunWindowsExe(exe)) {
+      vscode.window.showInformationMessage('WSL interop fixed (and set up to stay on after reboots).');
+    } else {
+      vscode.window.showErrorMessage(`Couldn't fix WSL interop: ${(r.stderr || r.stdout).trim() || `exit ${r.code}`}. See the V5 Sim output.`);
+    }
   }
 
   /** Graceful stop: QMP quit through v5fleet.sh, then wait for our child. */
@@ -140,6 +234,14 @@ export class SimInstance implements vscode.Disposable {
     const runner = await this.runner();
     if (!runner) return;
     this.set('stopping');
+    // Detach before QEMU quits, while the USB/IP server still answers; an
+    // attach still in flight finishes first so its port is detached too.
+    // Bounded: on a window reload VS Code allows deactivate() only seconds.
+    await Promise.race([
+      Promise.resolve(this.attaching).catch(() => undefined),
+      new Promise(ok => setTimeout(ok, ATTACH_WAIT_ON_STOP_MS)),
+    ]);
+    await this.detachUsb();
     this.log.appendLine(`> v5fleet.sh stop ${cur.id}`);
     const r = await runner.runScript('v5fleet.sh', ['stop', String(cur.id)]);
     this.log.append(r.stdout + r.stderr);

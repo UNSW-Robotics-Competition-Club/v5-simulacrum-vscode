@@ -12,3 +12,4 @@ bundle/**
 simsrc/**
 runtimes/**
 dist/**
+.gstack/**
