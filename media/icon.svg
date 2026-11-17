@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <!-- Extension icon (render to media/icon.png at 256x256). Original artwork:
+       a stylised robot brain with its screen, and a "play" badge for the simulator. -->
+  <rect width="256" height="256" rx="44" fill="#111317"/>
+  <!-- brain body -->
+  <rect x="30" y="54" width="196" height="150" rx="18" fill="#2a2e35" stroke="#3b4049" stroke-width="4"/>
+  <!-- screen -->
+  <rect x="46" y="70" width="140" height="96" rx="6" fill="#05070a"/>
+  <rect x="46" y="70" width="140" height="18" rx="6" fill="#1aa3d9"/>
+  <rect x="46" y="80" width="140" height="8" fill="#1aa3d9"/>
+  <rect x="58" y="100" width="54" height="26" rx="3" fill="#2f7fd8"/>
+  <rect x="120" y="100" width="54" height="26" rx="3" fill="#e5484d"/>
+  <rect x="58" y="134" width="84" height="8" rx="4" fill="#9aa0a6"/>
+  <rect x="58" y="148" width="56" height="8" rx="4" fill="#5c626b"/>
+  <!-- smart ports along the side and bottom -->
+  <g fill="#4a505a">
+    <rect x="198" y="74" width="16" height="10" rx="2"/><rect x="198" y="92" width="16" height="10" rx="2"/>
+    <rect x="198" y="110" width="16" height="10" rx="2"/><rect x="198" y="128" width="16" height="10" rx="2"/>
+    <rect x="58" y="180" width="18" height="10" rx="2"/><rect x="86" y="180" width="18" height="10" rx="2"/>
+    <rect x="114" y="180" width="18" height="10" rx="2"/><rect x="142" y="180" width="18" height="10" rx="2"/>
+  </g>
+  <!-- play badge: the simulator -->
+  <circle cx="190" cy="186" r="44" fill="#3cc46c" stroke="#111317" stroke-width="8"/>
+  <path d="M176 164 L212 186 L176 208 Z" fill="#0b0c0e"/>
+</svg>
