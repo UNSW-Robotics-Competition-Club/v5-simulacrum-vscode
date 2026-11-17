@@ -41,7 +41,7 @@ Or open this folder in VS Code and press F5 to run it in an Extension Developmen
 
 ## Use
 
-1. `V5 Sim: Start`. The status bar shows `V5 Sim N` once instance N is up, and the brain screen opens beside your editor.
+1. Click the **V5 Sim** icon in the activity bar (left), then **Start the simulator**; or the `V5 Sim` button in the status bar, or `V5 Sim: Start` in the Command Palette. The status bar shows `V5 Sim N` once instance N is up, and the brain screen opens beside your editor.
 2. `V5 Sim: Open Device Dashboard` / `Open Field View` for the other panes. Drag any pane to wherever you want it.
 3. Get your program onto it:
    - On Windows with usbip-win2, as usual: VEXcode and PROS see the simulated brain on USB, as with `V5Sim` (SIMULATOR.md section 5).

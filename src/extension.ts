@@ -91,6 +91,22 @@ export function activate(context: vscode.ExtensionContext): void {
     context.subscriptions.push(vscode.commands.registerCommand(id, fn));
   }
   context.subscriptions.push(log, status, s);
+
+  // the activity-bar view: its welcome content holds the buttons
+  context.subscriptions.push(vscode.window.registerTreeDataProvider('v5sim.home', {
+    getChildren: () => [],
+    getTreeItem: (item: vscode.TreeItem) => item,
+  }));
+
+  // once after installing: say it's there and offer to start it
+  if (!context.globalState.get<boolean>('v5sim.welcomed')) {
+    void context.globalState.update('v5sim.welcomed', true);
+    void vscode.window.showInformationMessage(
+      'V5 Brain Simulator is installed. Start it now? (It\'s also under the V5 Sim icon in the activity bar.)',
+      'Start', 'Later').then(pick => {
+      if (pick === 'Start') void vscode.commands.executeCommand('v5sim.start');
+    });
+  }
 }
 
 /** VS Code is closing: stop our simulator gracefully (never killed). */
