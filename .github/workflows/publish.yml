@@ -25,6 +25,10 @@ on:
         description: "Publish to the Marketplace's pre-release channel (users opt in to it)"
         type: boolean
         default: false
+      targets:
+        description: 'Only these platforms, comma-separated (e.g. win32-x64,darwin-x64); empty = all three'
+        required: false
+        default: ''
 
 permissions:
   contents: read
@@ -65,7 +69,19 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      # One vsce call per package: each gets its own OIDC exchange. Publishing
+      # all three in one call reported every one as published, but the
+      # Marketplace registered only the first (0.3.10: darwin-arm64 alone).
       - name: Publish (trusted publishing, OIDC)
         env:
           PRE: ${{ inputs.pre_release && '--pre-release' || '' }}
-        run: npx -y @vscode/vsce@4.1.1 publish --oidc $PRE --packagePath dist/*.vsix
+          TARGETS: ${{ inputs.targets }}
+        run: |
+          set -euo pipefail
+          for target in win32-x64 darwin-arm64 darwin-x64; do
+            if [ -n "$TARGETS" ] && [[ ",$TARGETS," != *",$target,"* ]]; then
+              echo "skip $target"; continue
+            fi
+            echo "== $target"
+            npx -y @vscode/vsce@4.1.1 publish --oidc $PRE --packagePath "dist/v5-simulacrum-vscode-$target.vsix"
+          done
