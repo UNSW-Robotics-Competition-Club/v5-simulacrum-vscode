@@ -4,6 +4,8 @@ import { ChildProcess, execFile, spawn } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
+import { needsStaging, stageScript } from './staging';
+
 export const isWindows = process.platform === 'win32';
 export const isMac = process.platform === 'darwin';
 
@@ -91,6 +93,18 @@ export class Runner {
   /** Run argv (already split) in the simulator's Linux. */
   exec(argv: string[], timeoutMs = 30_000): Promise<RunResult> {
     return this.shell(argv.map(sh).join(' '), timeoutMs);
+  }
+
+  /** A host file as the simulator's scripts can take it: its path, or a
+   *  copy in a staging folder when the path has spaces (see staging.ts). */
+  async stage(p: string): Promise<string> {
+    const unix = await this.toUnix(p);
+    if (!needsStaging(unix)) return unix;
+    const r = await this.shell(stageScript(unix));
+    if (r.code !== 0 || !r.stdout) {
+      throw new Error(`couldn't copy ${p} to a path without spaces: ${r.stderr.trim() || `exit ${r.code}`}`);
+    }
+    return r.stdout;
   }
 
   /** Whether the simulator's Linux can run this Windows .exe (WSL interop:

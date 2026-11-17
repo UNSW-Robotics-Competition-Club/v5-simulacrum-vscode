@@ -61,6 +61,19 @@ export function presetSetting(repo: string, file: string): string {
   return path.dirname(path.resolve(file)) === path.resolve(robots) ? path.basename(file, '.args') : file;
 }
 
+/** v5sim.slot, kept to 1..8 (settings.json can hold anything). */
+export function slotSetting(): number {
+  const n = Math.trunc(Number(cfg().get<number>('slot', 1)));
+  return n >= 1 && n <= 8 ? n : 1;
+}
+
+/** A WSL distribution name, as wsl.exe -d takes it (it also goes into a
+ *  terminal command line, so nothing else gets through). */
+export function wslDistro(): string | undefined {
+  const d = cfg().get<string>('wslDistro', 'Ubuntu-24.04').trim();
+  return /^[\w.-]+$/.test(d) ? d : undefined;
+}
+
 export function viewUrl(port: number, page: '' | 'screen' | 'dashboard' | 'controller'): vscode.Uri {
   return vscode.Uri.parse(`http://localhost:${port}/${page}`);
 }

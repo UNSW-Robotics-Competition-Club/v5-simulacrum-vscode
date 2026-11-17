@@ -16,6 +16,9 @@ concurrency:
   group: bundle-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   runtime:
     strategy:

@@ -20,7 +20,10 @@ export function chooseMode(found: string | undefined, tarball: string | undefine
 export const DATA_DIR = '$HOME/.v5-simulacrum';
 
 /** Unpack the runtime (once per extension version) and print where it is.
- *  Old versions' runtimes are removed; firmware and runs are kept. */
+ *  Other versions' runtimes are removed unless a simulator is running from
+ *  one (another editor, e.g. Cursor next to VS Code, may be on another
+ *  version); firmware and runs are kept. Each unpack has a folder of its
+ *  own, so two first starts at once don't mix their files. */
 export function installScript(tarballUnix: string, version: string, force = false): string {
   const v = version.replace(/[^\w.-]/g, '_');
   return [
@@ -28,15 +31,24 @@ export function installScript(tarballUnix: string, version: string, force = fals
     `D=${DATA_DIR}`,
     `R="$D/runtime-${v}"`,
     force ? 'rm -f "$R/.installed"' : '',
+    'mkdir -p "$D"',
     'if [ ! -f "$R/.installed" ]; then',
-    '  rm -rf "$R" "$D/unpack"',
-    '  mkdir -p "$D/unpack"',
-    `  tar -xzf ${sh(tarballUnix)} -C "$D/unpack"`,
-    '  mv "$D/unpack/runtime" "$R"',
-    '  rm -rf "$D/unpack"',
+    '  U=$(mktemp -d "$D/unpack.XXXXXX")',
+    `  tar -xzf ${sh(tarballUnix)} -C "$U"`,
+    '  rm -rf "$R"',
+    '  mv "$U/runtime" "$R"',
+    '  rm -rf "$U"',
     '  touch "$R/.installed"',
     'fi',
-    'for old in "$D"/runtime-*; do [ "$old" = "$R" ] || rm -rf "$old"; done',
+    // a process running from it (QEMU, Python, the scripts) names its path;
+    // awk takes the path from the environment so it doesn't match itself
+    `in_use() { ps -A -o args= 2>/dev/null | P="$1/" awk 'index($0, ENVIRON["P"]) { f = 1 } END { exit !f }'; }`,
+    'for old in "$D"/runtime-*; do',
+    '  [ -e "$old" ] && [ "$old" != "$R" ] || continue',
+    '  in_use "$old" || rm -rf "$old"',
+    'done',
+    // unpacks left by an editor that quit mid-way (one running now is newer)
+    'find "$D" -maxdepth 1 -name "unpack.*" -mmin +60 -exec rm -rf {} + 2>/dev/null || true',
     'mkdir -p "$D/runs" "$D/firmware"',
     'echo "RUNTIME=$R"',
     'echo "DATA=$D"',

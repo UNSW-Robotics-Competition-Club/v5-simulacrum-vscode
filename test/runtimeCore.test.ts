@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -29,7 +29,10 @@ test('environment assignments for bash -c', () => {
   assert.equal(out.trim(), "it's here|/x");
 });
 
-test('the install script unpacks once per version and cleans up old ones', () => {
+// The install script runs in WSL or on macOS. Under Windows, Git's tar takes
+// "C:\..." for a remote host and HOME is a Windows path: covered by CI on Linux.
+test('the install script unpacks once per version and cleans up old ones',
+  { skip: process.platform === 'win32' && 'needs a POSIX shell and tar (runs in WSL/macOS)' }, () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'v5home-'));
   const src = fs.mkdtempSync(path.join(os.tmpdir(), 'v5rt-'));
   fs.mkdirSync(path.join(src, 'runtime', 'sim', 'scripts'), { recursive: true });
@@ -53,4 +56,19 @@ test('the install script unpacks once per version and cleans up old ones', () =>
   const next = parseInstallOutput(run('0.4.0'))!;
   assert.ok(fs.existsSync(next.runtime) && !fs.existsSync(first!.runtime));   // old version gone
   assert.ok(fs.existsSync(path.join(home, '.v5-simulacrum', 'firmware', 'boot')));  // firmware kept
+
+  // another editor's simulator runs from 0.4.0: installing 0.5.0 keeps it
+  const script = path.join(next.runtime, 'sim', 'scripts', 'busy.sh');
+  fs.writeFileSync(script, 'sleep 30\n');
+  const busy = spawn('sh', [script], { stdio: 'ignore' });
+  try {
+    execFileSync('sleep', ['0.3']);
+    run('0.5.0');
+    assert.ok(fs.existsSync(next.runtime), 'a runtime in use is kept');
+  } finally {
+    busy.kill();
+  }
+  execFileSync('sleep', ['0.3']);
+  run('0.5.0');
+  assert.ok(!fs.existsSync(next.runtime), 'and removed once nothing runs from it');
 });
