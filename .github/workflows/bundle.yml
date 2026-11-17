@@ -8,7 +8,13 @@ name: bundle
 on:
   push:
     branches: [macos, main]
+    paths-ignore: ['**.md', '.vscode/**']
   workflow_dispatch:
+
+# A newer push to the same branch supersedes a running build.
+concurrency:
+  group: bundle-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   runtime:
@@ -29,9 +35,24 @@ jobs:
           ref: macos
           path: simsrc
           token: ${{ secrets.SIM_REPO_TOKEN || github.token }}
+      # QEMU is most of the build (minutes; macOS minutes cost 10x) and only
+      # changes with its version, the qemu-vex sources or the scripts that
+      # build it: reuse it when none of those changed.
+      - name: QEMU cache key
+        id: qemu
+        run: |
+          tag=$(grep -m1 '^QEMU_TAG=' bundle/build-runtime.sh | cut -d= -f2)
+          vex=$(git -C simsrc rev-parse HEAD:qemu-vex)
+          echo "key=qemu-${{ matrix.plat }}-$tag-$vex-${{ hashFiles('bundle/build-runtime.sh', 'bundle/relocate.py', 'simsrc/scripts/qemu_install_vex.sh', 'simsrc/scripts/qemu_build.sh', 'simsrc/scripts/platform.sh') }}" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/qemu-cache
+          key: ${{ steps.qemu.outputs.key }}
       - name: Build the runtime
         env:
           GH_TOKEN: ${{ github.token }}
+          QEMU_CACHE: ${{ runner.temp }}/qemu-cache
+          PBS_TAG: '20261110'           # the CPython build 0.3.7 ships; bump on purpose
         run: bash bundle/build-runtime.sh simsrc out
       - uses: actions/setup-node@v4
         with:

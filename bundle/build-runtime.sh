@@ -8,6 +8,7 @@
 #      runtime/manifest.json
 # No VEX firmware: the extension downloads VEXos from VEX on first start.
 # Env: PBS_TAG pins the python-build-standalone release (default: latest);
+# QEMU_CACHE reuses a QEMU built from the same sources (see below);
 # GH_TOKEN for GitHub API calls (CI).
 set -euo pipefail
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
@@ -21,32 +22,47 @@ case $(uname -s)-$(uname -m) in
   *) echo "no runtime build for $(uname -sm)" >&2; exit 1 ;;
 esac
 echo "== runtime for $PLAT"
-
-echo "== build tools"
-if [ "$PLAT" = linux-x64 ]; then
-  sudo apt-get update -q
-  sudo apt-get install -y -q ninja-build pkg-config gcc libglib2.0-dev libpixman-1-dev \
-    flex bison git python3-venv patchelf curl
-else
-  brew install ninja meson pkg-config glib pixman || true
-fi
-
-echo "== QEMU $QEMU_TAG, headless"
-if [ ! -d ~/re/qemu/.git ]; then
-  mkdir -p ~/re
-  git clone -q --depth 1 --branch "$QEMU_TAG" https://gitlab.com/qemu-project/qemu.git ~/re/qemu
-fi
-# Only what the brain needs: no display back ends, audio, network, USB host,
-# crypto... so the binary links little more than glib and pixman. The screen
-# goes to the extension through the robot sim's /screen page.
-export V5SIM_QEMU_CONFIGURE="--without-default-features --enable-pixman --enable-fdt=internal"
-bash "$SIM/scripts/qemu_install_vex.sh"
-
 R=$OUT/runtime
 rm -rf "$R" && mkdir -p "$R/qemu/bin" "$R/qemu/lib"
-cp ~/re/qemu/build/qemu-system-arm "$R/qemu/bin/"
-strip "$R/qemu/bin/qemu-system-arm" 2>/dev/null || true
-python3 "$HERE/relocate.py" "$R/qemu"
+
+# QEMU_CACHE=<dir>: a relocated qemu/ (bin + lib) from an earlier build of the
+# same QEMU and qemu-vex sources (CI keys it on their hashes). If it is there,
+# the build tools and the QEMU build are skipped; if not, the build fills it.
+QEMU_CACHE=${QEMU_CACHE:-}
+if [ -n "$QEMU_CACHE" ] && [ -x "$QEMU_CACHE/bin/qemu-system-arm" ]; then
+  echo "== QEMU $QEMU_TAG from the cache ($QEMU_CACHE)"
+  cp -R "$QEMU_CACHE/." "$R/qemu/"
+else
+  echo "== build tools"
+  if [ "$PLAT" = linux-x64 ]; then
+    sudo apt-get update -q
+    sudo apt-get install -y -q ninja-build pkg-config gcc libglib2.0-dev libpixman-1-dev \
+      flex bison git python3-venv patchelf curl
+  else
+    brew install ninja meson pkg-config glib pixman || true
+  fi
+
+  echo "== QEMU $QEMU_TAG, headless"
+  if [ ! -d ~/re/qemu/.git ]; then
+    mkdir -p ~/re
+    git clone -q --depth 1 --branch "$QEMU_TAG" https://gitlab.com/qemu-project/qemu.git ~/re/qemu
+  fi
+  # Only what the brain needs: no display back ends, audio, network, USB host,
+  # crypto... so the binary links little more than glib and pixman. The screen
+  # goes to the extension through the robot sim's /screen page.
+  export V5SIM_QEMU_CONFIGURE="--without-default-features --enable-pixman --enable-fdt=internal"
+  bash "$SIM/scripts/qemu_install_vex.sh"
+
+  cp ~/re/qemu/build/qemu-system-arm "$R/qemu/bin/"
+  strip "$R/qemu/bin/qemu-system-arm" 2>/dev/null || true
+  python3 "$HERE/relocate.py" "$R/qemu"
+  if [ -n "$QEMU_CACHE" ]; then
+    rm -rf "$QEMU_CACHE" && mkdir -p "$QEMU_CACHE"
+    cp -R "$R/qemu/." "$QEMU_CACHE/"
+  fi
+fi
+"$R/qemu/bin/qemu-system-arm" -machine help | grep -qi vex ||
+  { echo "qemu-system-arm has no vex-v5 machine" >&2; exit 1; }
 
 echo "== Python (python-build-standalone)"
 api() { curl -fsSL ${GH_TOKEN:+-H "Authorization: Bearer $GH_TOKEN"} "$@"; }
