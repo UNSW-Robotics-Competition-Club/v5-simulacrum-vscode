@@ -16,7 +16,7 @@ The tests round-trip every robot preset in a simulator checkout (`../v5-simulacr
 
 ## The bundled simulator
 
-The platform `.vsix` files carry a simulator runtime: headless QEMU with the VEX device models and its libraries, a standalone CPython, and the simulator's scripts and `sim/`. `bundle/build-runtime.sh <v5-simulacrum checkout> <out>` builds one for the machine it runs on. CI (`.github/workflows/bundle.yml`) builds Linux (used in WSL on Windows), Apple Silicon and Intel Mac runtimes from the simulator's `macos` branch, smoke-tests each, and packages one `.vsix` per VS Code target. The built QEMU is cached per platform (key: QEMU version, `qemu-vex/` tree, the build scripts), so a push that doesn't change those skips the QEMU build. `QEMU_CACHE` gives the script the same reuse locally.
+The platform `.vsix` files carry a simulator runtime: headless QEMU with the VEX device models and its libraries, a standalone CPython, and the simulator's scripts and `sim/`. `bundle/build-runtime.sh <v5-simulacrum checkout> <out>` builds one for the machine it runs on. CI (`.github/workflows/bundle.yml`) builds Linux (used in WSL on Windows), Apple Silicon and Intel Mac runtimes from the simulator's `main` branch, smoke-tests each, and packages one `.vsix` per VS Code target. The built QEMU is cached per platform (key: QEMU version, `qemu-vex/` tree, the build scripts), so a push that doesn't change those skips the QEMU build. `QEMU_CACHE` gives the script the same reuse locally.
 
 The extension unpacks the runtime once per version into `~/.v5-simulacrum/runtime-<version>` (inside WSL on Windows), removes older ones, and downloads VEXos into `~/.v5-simulacrum/firmware`.
 

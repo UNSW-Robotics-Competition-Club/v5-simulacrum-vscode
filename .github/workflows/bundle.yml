@@ -7,7 +7,7 @@ name: bundle
 
 on:
   push:
-    branches: [macos, main]
+    branches: [main]
     paths-ignore: ['**.md', '.vscode/**']
   workflow_dispatch:
 
@@ -35,7 +35,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: UNSW-Robotics-Competition-Club/v5-simulacrum
-          ref: macos
+          ref: main
           path: simsrc
           token: ${{ secrets.SIM_REPO_TOKEN || github.token }}
       # QEMU is most of the build (minutes; macOS minutes cost 10x) and only
