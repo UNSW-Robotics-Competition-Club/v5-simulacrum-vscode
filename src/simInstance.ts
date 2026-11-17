@@ -11,13 +11,17 @@ import * as vscode from 'vscode';
 import { Running, parseInstanceLine } from './instanceLine';
 import { Runner, isWindows, usbipBrainAttached, usbipExe } from './runner';
 import { mode, simRunner } from './runtime';
-import { cfg, presetFile } from './settings';
+import { cfg, presetFile, slotSetting } from './settings';
 import { OutputBudget } from './outputBudget';
 import { offerUsbDriver } from './usbDriver';
-import { INTEROP_REPAIR, attachBrain, detachBrain } from './usbip';
+import { INTEROP_REPAIR, attachBrain, attachedVport, detachBrain, usbipPorts } from './usbip';
 
 /** How long stop() waits for an attach still in flight before going on. */
 const ATTACH_WAIT_ON_STOP_MS = 5_000;
+/** How long start() waits for v5brain.sh to say which instance it is. */
+const START_TIMEOUT_MS = 120_000;
+/** Instance N's USB/IP server is on localhost:BASE+N (v5brain.sh, v5fleet.sh). */
+const USBIP_BASE_PORT = 3300;
 
 export type State = 'stopped' | 'starting' | 'running' | 'stopping';
 
@@ -76,18 +80,20 @@ export class SimInstance implements vscode.Disposable {
       const usb = await this.usbOption(c.get<string>('usb', 'auto'), runner);
       if (usb) args.push(usb);
       const extra = c.get<string>('extraRobotArgs', '').trim();
-      args.push('--robot', `@${await runner.toUnix(preset)}${extra ? ' ' + extra : ''}`);
+      args.push('--robot', `@${await runner.stage(preset)}${extra ? ' ' + extra : ''}`);
       const program = once?.program ?? c.get<string>('program', '').trim();
       if (program) {
         if (!fs.existsSync(program)) throw new Error(`no such program: ${program}`);
-        const slot = once?.slot ?? c.get<number>('slot', 1);
-        args.push('--run', await runner.toUnix(program), '--slot', String(slot));
+        const slot = once?.slot ?? slotSetting();
+        args.push('--run', await runner.stage(program), '--slot', String(slot));
       }
       this.log.appendLine(`> v5brain.sh ${args.join(' ')}`);
       const proc = await runner.spawnScript('v5brain.sh', args);
       this.proc = proc;
       let buffer = '';
       const budget = new OutputBudget();
+      const timer = setTimeout(() => this.abandonStart(proc,
+        `it didn't say which instance it is within ${START_TIMEOUT_MS / 1000} s`), START_TIMEOUT_MS);
       const onData = (chunk: Buffer) => {
         const text = chunk.toString();
         const shown = budget.take(text, Date.now());
@@ -95,7 +101,8 @@ export class SimInstance implements vscode.Disposable {
         buffer = (buffer + text).slice(-4096);
         // whole lines only: the instance line can arrive in two chunks
         const running = parseInstanceLine(buffer.slice(0, buffer.lastIndexOf('\n') + 1));
-        if (running && this.state === 'starting') {
+        if (running && this.state === 'starting' && this.proc === proc) {
+          clearTimeout(timer);
           buffer = '';
           this.set('running', running);
           if (this.attachFromWindows && running.usbipPort) {
@@ -106,6 +113,7 @@ export class SimInstance implements vscode.Disposable {
       proc.stdout?.on('data', onData);
       proc.stderr?.on('data', onData);
       this.exited = new Promise(resolve => proc.on('close', (code, signal) => {
+        clearTimeout(timer);
         this.log.appendLine(`[v5sim] the simulator exited (${signal ?? `code ${code}`})`);
         if (this.proc === proc) {
           this.proc = undefined;
@@ -120,13 +128,28 @@ export class SimInstance implements vscode.Disposable {
           .finally(() => resolve());
       }));
       proc.on('error', e => {
-        this.log.appendLine(`[v5sim] couldn't start: ${e.message}`);
-        vscode.window.showErrorMessage(`Couldn't start the simulator: ${e.message}`);
+        // 'close' need not follow a failed spawn: don't stay 'starting'
+        clearTimeout(timer);
+        this.abandonStart(proc, e.message);
       });
     } catch (e) {
       this.set('stopped', undefined);
       vscode.window.showErrorMessage(`Couldn't start the simulator: ${(e as Error).message}`);
     }
+  }
+
+  /** Give up on a start that never announced its instance (or couldn't
+   *  spawn). The process isn't killed (see the top of this file); if it comes
+   *  up later, its panes can still be opened from the menu. */
+  private abandonStart(proc: ChildProcess, why: string): void {
+    this.log.appendLine(`[v5sim] couldn't start: ${why}`);
+    if (this.proc !== proc || this.state !== 'starting') return;
+    this.proc = undefined;
+    this.set('stopped', undefined);
+    const show = 'Show log';
+    void vscode.window.showErrorMessage(`Couldn't start the simulator: ${why}.`, show).then(pick => {
+      if (pick === show) this.log.show();
+    });
   }
 
   /** --usbip / --usb / nothing, as V5Sim.cmd picks it. */
@@ -135,7 +158,13 @@ export class SimInstance implements vscode.Disposable {
     if (mode === 'pty') return '--usb';
     const exe = usbipExe();
     if (isWindows && !exe) void offerUsbDriver(); // not awaited: starting goes on
-    if (mode === 'usbip') return this.usbip(exe, runner);
+    if (mode === 'usbip') {
+      if (isWindows && !exe) {
+        this.log.appendLine(`[v5sim] v5sim.usb is "usbip", but usbip-win2 isn't installed: using WSL serial ports`);
+        return '--usb';
+      }
+      return this.usbip(exe, runner);
+    }
     if (!exe) return '--usb';
     if (await usbipBrainAttached(exe)) {
       this.log.appendLine('[v5sim] a V5 brain is already on Windows USB (usbip-win2 takes one at a time): using WSL serial ports');
@@ -186,11 +215,19 @@ export class SimInstance implements vscode.Disposable {
     this.vport = undefined;
   }
 
-  private async detachUsb(): Promise<void> {
+  /** Take the instance's brain off Windows USB before it quits, while its
+   *  USB/IP server still answers. The port is the one we attached, else
+   *  looked up: one attached by v5brain.sh, or by us before a window reload
+   *  (when WSL can't run usbip.exe, nothing else would detach it). */
+  private async detachUsb(cur: Running): Promise<void> {
     const exe = usbipExe();
-    const vport = this.vport;
+    let vport = this.vport;
     this.vport = undefined;
-    if (!exe || vport === undefined) return;
+    if (!exe || !isWindows) return;
+    if (vport === undefined) {
+      vport = attachedVport(await usbipPorts(exe), cur.usbipPort ?? USBIP_BASE_PORT + cur.id);
+    }
+    if (vport === undefined) return;
     this.log.appendLine(`> usbip detach -p ${vport}`);
     const r = await detachBrain(exe, vport);
     this.log.appendLine(`[v5sim] Windows: ${r.output}`);
@@ -241,7 +278,7 @@ export class SimInstance implements vscode.Disposable {
       Promise.resolve(this.attaching).catch(() => undefined),
       new Promise(ok => setTimeout(ok, ATTACH_WAIT_ON_STOP_MS)),
     ]);
-    await this.detachUsb();
+    await this.detachUsb(cur);
     this.log.appendLine(`> v5fleet.sh stop ${cur.id}`);
     const r = await runner.runScript('v5fleet.sh', ['stop', String(cur.id)]);
     this.log.append(r.stdout + r.stderr);

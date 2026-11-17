@@ -14,10 +14,15 @@ const TITLES: Record<Page, string> = {
   screen: 'V5 Brain', dashboard: 'V5 Devices', controller: 'V5 Controller', '': 'V5 Field',
 };
 
+/** What a pane shows: an instance, one starting, or none. */
+export type PaneTarget = Running | 'starting' | undefined;
+
 export class WebPanel {
   private static panels = new Map<Page, WebPanel>();
+  /** A pane's page stopped answering (the instance may be gone). */
+  static onPageDown?: (target: Running) => void;
 
-  static show(page: Page, target: Running | undefined, column = vscode.ViewColumn.Beside): void {
+  static show(page: Page, target: PaneTarget, column = vscode.ViewColumn.Beside): void {
     const existing = WebPanel.panels.get(page);
     if (existing) {
       existing.panel.reveal(undefined, true);
@@ -33,7 +38,7 @@ export class WebPanel {
   }
 
   /** Point every open pane at the instance (or show that none runs). */
-  static refreshAll(target: Running | undefined): void {
+  static refreshAll(target: PaneTarget): void {
     for (const p of WebPanel.panels.values()) void p.load(target);
   }
 
@@ -44,7 +49,8 @@ export class WebPanel {
   private constructor(readonly page: Page, readonly panel: vscode.WebviewPanel) {
     panel.onDidDispose(() => WebPanel.panels.delete(page));
     panel.webview.onDidReceiveMessage(m => {
-      if (m?.type === 'command') void vscode.commands.executeCommand(m.command);
+      // the only command a pane's buttons run (never one named by the page)
+      if (m?.type === 'command') void vscode.commands.executeCommand('v5sim.start');
       if (m?.type === 'reload') { this.shown = undefined; void this.load(this.target); }
       if (m?.type === 'browser' && this.target) {
         void vscode.env.openExternal(viewUrl(this.target.viewPort, this.page));
@@ -52,8 +58,16 @@ export class WebPanel {
     });
   }
 
-  private async load(target: Running | undefined): Promise<void> {
+  private async load(next: PaneTarget): Promise<void> {
     const load = ++this.loads;
+    if (next === 'starting') {
+      this.target = undefined;
+      this.shown = undefined;
+      this.panel.title = TITLES[this.page];
+      this.panel.webview.html = this.message('The simulator is starting...', []);
+      return;
+    }
+    const target = next;
     this.target = target;
     if (!target) {
       this.shown = undefined;
@@ -73,6 +87,7 @@ export class WebPanel {
       () => load === this.loads);
     if (load !== this.loads) return;
     if (!up) {
+      WebPanel.onPageDown?.(target);
       this.panel.webview.html = this.message(
         `The simulator's page (port ${target.viewPort}) isn't answering. See V5 Sim: Show Log.`,
         [['Retry', 'reload'], ['Open in browser', 'browser']]);
@@ -115,7 +130,7 @@ button:hover{background:var(--vscode-button-hoverBackground)}</style></head>
 <body><div>${escapeAttr(text)}</div><div class="b">${html}</div>
 <script nonce="${nonce}">const vs = acquireVsCodeApi();
 document.querySelectorAll('button').forEach(b => b.onclick = () => b.dataset.m === 'command'
-  ? vs.postMessage({ type: 'command', command: 'v5sim.start' }) : vs.postMessage({ type: b.dataset.m }));</script>
+  ? vs.postMessage({ type: 'command' }) : vs.postMessage({ type: b.dataset.m }));</script>
 </body></html>`;
   }
 }

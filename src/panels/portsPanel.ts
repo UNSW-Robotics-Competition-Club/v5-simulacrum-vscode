@@ -54,7 +54,7 @@ export class PortsPanel {
   };
 
   private async openFile(file: string | undefined): Promise<void> {
-    if (this.dirty && !(await this.confirmDiscard())) return;
+    if (this.dirty && !(await this.confirmDiscard())) { this.post(true); return; }
     this.file = file;
     this.originalText = file ? fs.readFileSync(file, 'utf8') : '';
     const parsed = parse(this.originalText, this.load);

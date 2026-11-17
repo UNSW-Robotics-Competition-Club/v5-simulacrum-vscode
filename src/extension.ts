@@ -38,13 +38,19 @@ export function activate(context: vscode.ExtensionContext): void {
   let wasRunning = false;
   s.onDidChange(() => {
     showStatus();
-    void vscode.commands.executeCommand('setContext', 'v5sim.running', s.state === 'running');
-    WebPanel.refreshAll(s.state === 'running' ? s.current : undefined);
+    WebPanel.refreshAll(s.state === 'running' ? s.current : s.state === 'starting' ? 'starting' : undefined);
     if (s.state === 'running' && !wasRunning && s.owned && cfg().get('openBrainOnStart', true)) {
       WebPanel.show('screen', s.current);
     }
     wasRunning = s.state === 'running';
   });
+
+  // An instance started elsewhere that stopped answering: forget it once
+  // v5fleet.sh no longer lists it, so Start works again.
+  WebPanel.onPageDown = target => {
+    if (s.owned || s.current !== target) return;
+    void s.list().then(up => { if (s.current === target && !up.some(r => r.id === target.id)) s.detach(); });
+  };
 
   const open = (page: Page) => async () => {
     const target = await s.target();

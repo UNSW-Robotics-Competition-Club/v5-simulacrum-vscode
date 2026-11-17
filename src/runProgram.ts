@@ -7,8 +7,9 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 
-import { isWindows, onPath, terminalEnv } from './runner';
-import { cfg } from './settings';
+import { isWindows, onPath, sh, terminalEnv } from './runner';
+import { installUsbDriver } from './usbDriver';
+import { slotSetting } from './settings';
 import { Running, SimInstance } from './simInstance';
 
 type Pick = vscode.QuickPickItem & { action: 'bin' | 'pros' | 'browse'; file?: string };
@@ -67,7 +68,7 @@ async function runBin(sim: SimInstance, file: string, slot: number): Promise<voi
 }
 
 async function pickSlot(): Promise<number | undefined> {
-  const def = cfg().get<number>('slot', 1);
+  const def = slotSetting();
   const items = Array.from({ length: 8 }, (_, i) => ({ label: `Slot ${i + 1}`, slot: i + 1,
     picked: i + 1 === def }));
   items.unshift(items.splice(def - 1, 1)[0]);
@@ -88,9 +89,25 @@ async function running(sim: SimInstance): Promise<Running | undefined> {
   return sim.target();
 }
 
+/** Windows, but the brain is on WSL serial ports (no usbip-win2, a brain
+ *  already on Windows USB, or v5sim.usb = pty): Windows programs can't open
+ *  them. An instance started elsewhere has neither, and is taken to be on USB. */
+function onWslSerial(target: Running): boolean {
+  return isWindows && !!target.ttySys && target.usbipPort === undefined;
+}
+
 async function prosUpload(sim: SimInstance, folder: string, slot: number): Promise<void> {
   const target = await running(sim);
   if (!target) return;
+  if (onWslSerial(target)) {
+    const install = 'Install USB driver';
+    const pick = await vscode.window.showWarningMessage(
+      "The simulated brain isn't on Windows USB (its USB port is a WSL serial port), so the PROS CLI on Windows can't reach it. " +
+      `Install the USB driver (usbip-win2) and restart the simulator, or run the project's .bin (bin/monolith.bin) with "Run Program on Sim".`,
+      install);
+    if (pick === install) await installUsbDriver();
+    return;
+  }
   // With usbip-win2 the sim is a USB brain on Windows and pros finds it;
   // otherwise name its serial port.
   const port = !isWindows && target.ttySys ? ` ${target.ttySys}` : '';
@@ -103,6 +120,19 @@ async function prosUpload(sim: SimInstance, folder: string, slot: number): Promi
 export async function programTerminal(sim: SimInstance): Promise<void> {
   const target = await running(sim);
   if (!target) return;
+  if (onWslSerial(target) && target.ttyUser) {
+    // the port is in WSL: open it there (pros terminal, else screen)
+    const runner = await sim.runner();
+    if (!runner) return;
+    const tty = sh(target.ttyUser);
+    const script = `if command -v pros >/dev/null; then exec pros terminal ${tty}; ` +
+      `elif command -v screen >/dev/null; then exec screen ${tty}; ` +
+      `else echo "Neither pros nor screen is installed in WSL (${runner.distro}): install one (sudo apt install screen), then try again."; read -r _; fi`;
+    const term = vscode.window.createTerminal({ name: `V5 program (sim ${target.id})`, shellPath: 'wsl.exe',
+      shellArgs: ['-d', runner.distro, '-e', 'bash', '-lc', script] });
+    term.show();
+    return;
+  }
   if (isWindows || !target.ttyUser) {
     vscode.window.showInformationMessage(
       'This simulator is on Windows USB: open its User port with `pros terminal` or V5Term from the v5-simulacrum folder.');

@@ -326,8 +326,7 @@
     const head = $('h2', {}, `Port ${port}`);
     if (o?.kind === 'include') {
       box.replaceChildren(head, $('p', {}, `${o.label}, from the included preset @${o.ref}. `,
-        'Edit that file to change it, or add your own device here to override it.'),
-        field('Device', select('', KINDS, v => { setKind(port, v); changed(); })));
+        'Edit that file to change it. A device of your own here would be a second one on the port, which the simulator refuses.'));
       return;
     }
     const kind = o ? o.kind : '';

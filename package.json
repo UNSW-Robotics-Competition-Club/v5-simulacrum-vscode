@@ -197,7 +197,7 @@
         "v5sim.program": {
           "type": "string",
           "default": "",
-          "description": "Optional: a V5 program (.bin) to install in slot 1 and start once the brain has booted."
+          "description": "Optional: a V5 program (.bin) to install in slot v5sim.slot and start once the brain has booted."
         },
         "v5sim.slot": {
           "type": "integer",

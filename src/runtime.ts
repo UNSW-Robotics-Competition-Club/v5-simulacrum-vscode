@@ -10,7 +10,7 @@ import * as path from 'node:path';
 import * as vscode from 'vscode';
 
 import { Runner, isWindows } from './runner';
-import { cfg, repoPath } from './settings';
+import { repoPath, wslDistro } from './settings';
 
 import { DATA_DIR, Mode, bundledEnv, chooseMode, installScript, parseInstallOutput, parseWslList } from './runtimeCore';
 export { DATA_DIR };
@@ -43,18 +43,27 @@ export function mode(): Mode['kind'] { return currentMode; }
  *  needed (once per session; force = reinstall). */
 export function simRunner(force = false): Promise<Runner | undefined> {
   if (force || !ready) {
-    ready = resolve(force).catch(e => {
-      ready = undefined;
+    // Only a Runner is kept: a setup that stopped short (WSL not installed
+    // yet, the checkout prompt dismissed) runs again on the next start.
+    const p: Promise<Runner | undefined> = resolve(force).then(r => {
+      if (!r && ready === p) ready = undefined;
+      return r;
+    }, e => {
+      if (ready === p) ready = undefined;
       vscode.window.showErrorMessage(`V5 simulator: ${(e as Error).message}`);
       log?.appendLine(`[v5sim] ${(e as Error).stack ?? e}`);
       return undefined;
     });
+    ready = p;
   }
   return ready;
 }
 
 async function resolve(force: boolean): Promise<Runner | undefined> {
-  const distro = cfg().get<string>('wslDistro', 'Ubuntu-24.04');
+  const distro = wslDistro() ?? '';         // not used off Windows
+  if (isWindows && !distro) {
+    throw new Error('v5sim.wslDistro must be a WSL distribution name (letters, digits, ".", "-", "_"), e.g. Ubuntu-24.04');
+  }
   const tarball = bundledTarball();
   const m = chooseMode(await repoPath(false), tarball);
   currentMode = m.kind;

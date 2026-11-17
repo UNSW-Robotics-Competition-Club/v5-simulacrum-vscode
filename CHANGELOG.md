@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- **Folders with spaces**: a robot preset or program in a folder whose path has spaces (`OneDrive - School`, `C:\Users\First Last`) works; it used to stop the robot sim or the program from starting.
+- **Installing WSL**: after installing WSL (or a missing distribution) from the prompt, Start sets the simulator up; it used to need a window reload.
+- **Starting**: a start that never comes up gives up after two minutes with a "Show log" button, instead of staying "starting". The panes say "starting" meanwhile.
+- **PROS without the USB driver (Windows)**: Program Terminal opens the brain's port in WSL (`pros terminal`, else `screen`); PROS upload says why it can't reach the brain and offers the USB driver.
+- **Windows USB**: Stop takes the brain off Windows USB even after a window reload, or for a simulator started outside VS Code.
+- **Cursor and VS Code side by side**: one editor no longer deletes the simulator the other is running.
+- **A simulator started elsewhere** that has stopped is forgotten, so Start works again.
+- Smaller: `v5sim.usb: usbip` without usbip-win2 uses serial ports (and says so); an out-of-range `v5sim.slot` is treated as 1; `v5sim.wslDistro` must be a distribution name; Configure Ports no longer suggests overriding an included preset's port (the simulator refuses two devices on one port).
+
 ## 0.3.10 (beta)
 
 - **Stop is reliable**: stopping could randomly find the simulator "not running" and leave it running (a race in how the simulator checks that it's up).
