@@ -12,7 +12,7 @@ import * as vscode from 'vscode';
 import { Runner, isWindows } from './runner';
 import { repoPath, wslDistro } from './settings';
 
-import { DATA_DIR, Mode, bundledEnv, chooseMode, installScript, parseInstallOutput, parseWslList } from './runtimeCore';
+import { DATA_DIR, Mode, UnpackProgress, bundledEnv, chooseMode, installScript, parseInstallOutput, parseWslList } from './runtimeCore';
 export { DATA_DIR };
 
 // ------------------------------------------------------------------ state
@@ -81,25 +81,102 @@ async function resolve(force: boolean): Promise<Runner | undefined> {
   }, async progress => {
     // a Runner just for setup: no root yet
     const setup = new Runner(path.dirname(m.tarball), distro);
-    progress.report({ message: 'unpacking...' });
+    const steps = stepper(progress);
+    steps.step('getting the simulator ready...');
     const version = context?.extension.packageJSON.version ?? '0';
-    const r = await setup.shell(installScript(await setup.toUnix(m.tarball), version, force), 180_000);
-    log?.append(r.stdout + r.stderr);
+    const unpack = new UnpackProgress();
+    const tail: string[] = [];                  // the last lines, for an error
+    log?.appendLine(`[v5sim] setting up the bundled simulator ${version}`);
+    let logged = 0;                             // the last tenth logged
+    const t0 = Date.now();
+    const r = await setup.shellLines(installScript(await setup.toUnix(m.tarball), version, force), line => {
+      tail.push(line);
+      if (tail.length > 5) tail.shift();
+      if (!unpack.feed(line)) { log?.appendLine(line); return; }
+      if (unpack.done === 0) {
+        // the first start after an install or update: show the log too
+        log?.appendLine(`[v5sim] unpacking the simulator: ${unpack.total} files (once per install or update)`);
+        log?.show(true);
+        steps.step('unpacking the simulator (once per install or update)...');
+        logged = 0;
+        return;
+      }
+      const tenth = Math.floor(unpack.fraction * 10);
+      if (tenth > logged) {
+        logged = tenth;
+        log?.appendLine(`[v5sim]   ${tenth * 10}%: ${unpack.done} of ${unpack.total} files, ${Math.round((Date.now() - t0) / 1000)} s`);
+      }
+      steps.update(`unpacking the simulator (once per install or update): ${unpack.done} of ${unpack.total} files...`,
+        unpack.fraction * UNPACK_SHARE);
+    }, UNPACK_TIMEOUT_MS);
+    if (r.stderr) log?.append(r.stderr);
+    const unpacked = steps.end();
+    if (unpack.total) log?.appendLine(`[v5sim] unpacked ${unpack.done} files in ${unpacked} s`);
     const paths = parseInstallOutput(r.stdout);
-    if (r.code !== 0 || !paths) throw new Error(`couldn't unpack the simulator (${r.stderr.trim() || `exit ${r.code}`}); see V5 Sim: Show Log`);
+    if (r.code !== 0 || !paths) {
+      const why = r.stderr.trim() || tail.filter(l => l.startsWith('F ')).pop()?.slice(2) || `exit ${r.code}`;
+      throw new Error(`couldn't unpack the simulator (${why}); see V5 Sim: Show Log`);
+    }
     const { env, pathPrefix } = bundledEnv(paths);
     const unixRoot = `${paths.runtime}/sim`;
     const hostRoot = isWindows ? (await setup.exec(['wslpath', '-w', unixRoot])).stdout.trim() : unixRoot;
     const runner = new Runner(hostRoot, distro, { unixRoot, env, pathPrefix });
-    progress.report({ message: 'checking VEXos (downloads it from VEX the first time)...' });
+    steps.step('checking VEXos (downloads it from VEX the first time)...', UNPACK_SHARE);
+    log?.appendLine('[v5sim] checking VEXos (downloads it from VEX the first time)');
     const fw = await runner.runScript('fetch_firmware.sh', [], 300_000);
     log?.append(fw.stdout + fw.stderr);
+    log?.appendLine(`[v5sim] VEXos checked in ${steps.end()} s`);
     if (fw.code !== 0) {
       throw new Error(`couldn't get VEXos from VEX: ${lastLine(fw.stderr || fw.stdout)}. Check the internet connection, then V5 Sim: Repair Simulator`);
     }
     log?.appendLine(`[v5sim] bundled simulator ready: ${paths.runtime}`);
     return runner;
   });
+}
+
+/** Unpacking may take minutes where every new file is scanned (antivirus on
+ *  a managed Mac or PC). */
+const UNPACK_TIMEOUT_MS = 600_000;
+/** The part of the progress bar unpacking fills (VEXos the rest). */
+const UNPACK_SHARE = 0.8;
+
+type Progress = vscode.Progress<{ message?: string; increment?: number }>;
+
+/** Progress messages with the seconds so far, refreshed every second, so a
+ *  slow step visibly moves; the bar is filled to a fraction (0..1). */
+function stepper(progress: Progress) {
+  let text = '';
+  let started = Date.now();
+  let filled = 0;          // percent reported so far
+  let target = 0;
+  let timer: ReturnType<typeof setInterval> | undefined;
+  const show = () => {
+    const increment = Math.max(0, Math.round(target * 100) - filled);
+    filled += increment;
+    progress.report({ message: `${text} (${Math.round((Date.now() - started) / 1000)} s)`, increment });
+  };
+  return {
+    /** A new step: its text, the timer from 0, the bar at least at fraction. */
+    step(t: string, fraction = target) {
+      text = t;
+      target = Math.max(target, fraction);
+      started = Date.now();
+      clearInterval(timer);
+      show();
+      timer = setInterval(show, 1_000);
+    },
+    /** New text and fraction, shown at the next refresh. */
+    update(t: string, fraction = target) {
+      text = t;
+      target = Math.max(target, fraction);
+    },
+    /** Stop refreshing; the step's seconds. */
+    end(): number {
+      clearInterval(timer);
+      timer = undefined;
+      return Math.round((Date.now() - started) / 1000);
+    },
+  };
 }
 
 function lastLine(s: string): string {

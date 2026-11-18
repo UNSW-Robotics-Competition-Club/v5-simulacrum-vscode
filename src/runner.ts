@@ -125,6 +125,33 @@ export class Runner {
     return this.run(cmd, argv, timeoutMs);
   }
 
+  /** shell(), with each stdout line passed to onLine as it arrives (for
+   *  progress); stdout is also returned whole. */
+  shellLines(command: string, onLine: (line: string) => void, timeoutMs = 30_000): Promise<RunResult> {
+    const [cmd, argv] = this.argv(command);
+    return new Promise(resolve => {
+      const p = spawn(cmd, argv, { windowsHide: true, env: scriptEnv() });
+      let stdout = '', stderr = '', rest = '';
+      const timer = setTimeout(() => {
+        stderr += `timed out after ${Math.round(timeoutMs / 1000)} s\n`;
+        p.kill();
+      }, timeoutMs);
+      const lines = (text: string) => {
+        const parts = (rest + text).split(/\r?\n/);
+        rest = parts.pop() ?? '';
+        for (const l of parts) onLine(l);
+      };
+      p.stdout.on('data', (d: Buffer) => { stdout += d.toString(); lines(d.toString()); });
+      p.stderr.on('data', (d: Buffer) => { stderr += d.toString(); });
+      p.on('error', e => { stderr += e.message; });
+      p.on('close', code => {
+        clearTimeout(timer);
+        if (rest) onLine(rest);
+        resolve({ code: code ?? 1, stdout, stderr });
+      });
+    });
+  }
+
   private run(cmd: string, argv: string[], timeoutMs: number): Promise<RunResult> {
     return new Promise(resolve => {
       execFile(cmd, argv, { timeout: timeoutMs, windowsHide: true, maxBuffer: 4 << 20, env: scriptEnv() },

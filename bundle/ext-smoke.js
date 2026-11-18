@@ -48,6 +48,14 @@ async function main() {
   if (!running) throw new Error('no instance line');
   console.log('instance', JSON.stringify(running));
   if (!running.ttySys) throw new Error('no USB serial ports in the instance line');
+  // ...and the ports themselves: the USB bridge (v5usb_pty.py) makes them
+  // once QEMU's USB sockets are up
+  for (const tty of [running.ttySys, running.ttyUser]) {
+    let ok = false;
+    for (let i = 0; i < 300 && !ok; i++) { ok = fs.existsSync(tty); if (!ok) await sleep(100); }
+    if (!ok) throw new Error(`USB serial port ${tty} never appeared`);
+    console.log('usb port', tty, '->', fs.realpathSync(tty));
+  }
 
   const base = `http://localhost:${running.viewPort}`;
   let png;
