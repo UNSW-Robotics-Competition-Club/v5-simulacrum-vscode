@@ -23,18 +23,25 @@ export const DATA_DIR = '$HOME/.v5-simulacrum';
  *  Other versions' runtimes are removed unless a simulator is running from
  *  one (another editor, e.g. Cursor next to VS Code, may be on another
  *  version); firmware and runs are kept. Each unpack has a folder of its
- *  own, so two first starts at once don't mix their files. */
+ *  own, so two first starts at once don't mix their files.
+ *  While unpacking it prints TOTAL=<entries>, then "F <entry>" per entry
+ *  (UnpackProgress reads them). */
 export function installScript(tarballUnix: string, version: string, force = false): string {
   const v = version.replace(/[^\w.-]/g, '_');
   return [
     'set -e',
+    'set -o pipefail',
     `D=${DATA_DIR}`,
     `R="$D/runtime-${v}"`,
     force ? 'rm -f "$R/.installed"' : '',
     'mkdir -p "$D"',
     'if [ ! -f "$R/.installed" ]; then',
     '  U=$(mktemp -d "$D/unpack.XXXXXX")',
-    `  tar -xzf ${sh(tarballUnix)} -C "$U"`,
+    // the entry count first (listing only reads), then one line per entry
+    // as it is written: tar -v prints names to stdout (GNU) or stderr (bsdtar)
+    `  N=$(tar -tzf ${sh(tarballUnix)} | wc -l | tr -d ' ')`,
+    '  echo "TOTAL=$N"',
+    `  tar -xvzf ${sh(tarballUnix)} -C "$U" 2>&1 | awk '{ print "F " $0; fflush() }'`,
     '  rm -rf "$R"',
     '  mv "$U/runtime" "$R"',
     '  rm -rf "$U"',
@@ -53,6 +60,30 @@ export function installScript(tarballUnix: string, version: string, force = fals
     'echo "RUNTIME=$R"',
     'echo "DATA=$D"',
   ].filter(Boolean).join('\n');
+}
+
+/** Counts the install script's unpack lines: how far it has got. */
+export class UnpackProgress {
+  total = 0;
+  done = 0;
+
+  /** Whether the line was a progress line (TOTAL= or F ...). */
+  feed(line: string): boolean {
+    const t = /^TOTAL=(\d+)\s*$/.exec(line);
+    if (t) {
+      this.total = +t[1];
+      this.done = 0;
+      return true;
+    }
+    if (!line.startsWith('F ')) return false;
+    this.done = this.total ? Math.min(this.done + 1, this.total) : this.done + 1;
+    return true;
+  }
+
+  /** 0..1, once the total is known. */
+  get fraction(): number {
+    return this.total ? this.done / this.total : 0;
+  }
 }
 
 export interface BundledPaths { runtime: string; data: string }

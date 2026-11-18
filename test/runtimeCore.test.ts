@@ -6,7 +6,21 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 
 import { envPrefix } from '../src/runner';
-import { bundledEnv, chooseMode, installScript, parseInstallOutput, parseWslList } from '../src/runtimeCore';
+import { UnpackProgress, bundledEnv, chooseMode, installScript, parseInstallOutput, parseWslList } from '../src/runtimeCore';
+
+test('unpack progress counts the install script TOTAL= and F lines', () => {
+  const p = new UnpackProgress();
+  assert.equal(p.feed('RUNTIME=/x'), false);
+  assert.equal(p.fraction, 0);
+  assert.equal(p.feed('TOTAL=4'), true);
+  for (const f of ['F x runtime/', 'F x runtime/a', 'F runtime/b']) assert.equal(p.feed(f), true);
+  assert.equal(p.done, 3);
+  assert.equal(p.fraction, 0.75);
+  p.feed('F runtime/c'); p.feed('F an extra line');          // never past the total
+  assert.equal(p.done, 4);
+  assert.equal(p.fraction, 1);
+  assert.equal(p.feed('mkdir: something'), false);
+});
 
 test('a checkout wins over the bundle; neither is none', () => {
   assert.deepEqual(chooseMode('/src/v5-simulacrum', '/ext/runtime/runtime.tar.gz'), { kind: 'repo', repo: '/src/v5-simulacrum' });
@@ -42,7 +56,11 @@ test('the install script unpacks once per version and cleans up old ones',
   const run = (v: string, force = false) =>
     execFileSync('bash', ['-c', installScript(tgz, v, force)], { env: { ...process.env, HOME: home } }).toString();
 
-  const first = parseInstallOutput(run('0.3.0'));
+  const out = run('0.3.0');
+  const progress = new UnpackProgress();
+  for (const line of out.split(/\r?\n/)) progress.feed(line);
+  assert.ok(progress.total >= 3 && progress.done === progress.total, out);   // TOTAL=, then one F line each
+  const first = parseInstallOutput(out);
   assert.ok(first);
   assert.equal(first!.runtime, path.join(home, '.v5-simulacrum', 'runtime-0.3.0'));
   assert.ok(fs.existsSync(path.join(first!.runtime, 'sim', 'scripts', 'x.sh')));
