@@ -15,7 +15,10 @@ const TIP_KEY = 'v5sim.macRunTipShown';
 /** A build writes its .bin more than once: offer once it has settled. */
 const SETTLE_MS = 1_500;
 
-export function initRunOnSim(context: vscode.ExtensionContext, sim: SimInstance): void {
+let log: vscode.OutputChannel | undefined;
+
+export function initRunOnSim(context: vscode.ExtensionContext, sim: SimInstance, out: vscode.OutputChannel): void {
+  log = out;
   void markVexProject();
   context.subscriptions.push(vscode.workspace.onDidChangeWorkspaceFolders(() => void markVexProject()));
 
@@ -37,10 +40,12 @@ export function initRunOnSim(context: vscode.ExtensionContext, sim: SimInstance)
     clearTimeout(timers.get(uri.fsPath));
     timers.set(uri.fsPath, setTimeout(() => {
       timers.delete(uri.fsPath);
+      log?.appendLine(`[v5sim] new build: ${uri.fsPath}`);
       void offerRun(sim, uri.fsPath);
     }, SETTLE_MS));
   };
   const watcher = vscode.workspace.createFileSystemWatcher('**/{build,bin}/*.bin');
+  log?.appendLine('[v5sim] watching for builds (build/*.bin, bin/*.bin) to offer Run on Sim');
   context.subscriptions.push(watcher, watcher.onDidCreate(built), watcher.onDidChange(built),
     { dispose: () => timers.forEach(t => clearTimeout(t)) });
 }
@@ -55,7 +60,12 @@ async function markVexProject(): Promise<void> {
 async function offerRun(sim: SimInstance, file: string): Promise<void> {
   const action = buildAction(cfg().get<string>('runOnBuild', 'ask'),
     { isMac, windowsUsb: isWindows && !!usbipExe() });
-  if (action === 'none') return;
+  if (action === 'none') {
+    log?.appendLine('[v5sim]   not offered: ' + (isWindows && usbipExe()
+      ? "the brain is on Windows USB (VEXcode's Download reaches it)" : 'v5sim.runOnBuild is "never"'));
+    return;
+  }
+  log?.appendLine(`[v5sim]   ${action === 'run' ? 'running it (v5sim.runOnBuild is "always")' : 'offering Run on Sim'}`);
   const slot = slotSetting();
   if (action === 'run') {
     await runBin(sim, file, slot);

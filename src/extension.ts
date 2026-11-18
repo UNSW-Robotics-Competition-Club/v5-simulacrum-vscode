@@ -104,7 +104,7 @@ export function activate(context: vscode.ExtensionContext): void {
     context.subscriptions.push(vscode.commands.registerCommand(id, fn));
   }
   context.subscriptions.push(log, status, s);
-  initRunOnSim(context, s);
+  initRunOnSim(context, s, log);
 
   // the activity-bar view: its welcome content holds the buttons
   context.subscriptions.push(vscode.window.registerTreeDataProvider('v5sim.home', {
