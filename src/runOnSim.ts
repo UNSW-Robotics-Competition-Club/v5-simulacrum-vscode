@@ -2,11 +2,11 @@
 // can't see the simulated brain on a Mac (no USB device there, only serial
 // ports): a status bar button, a button in VEX projects' editor title, an
 // offer to run each new build, and a one-time tip.
-import * as path from 'node:path';
 import * as vscode from 'vscode';
 
 import { buildAction, isProgramBuild } from './buildWatch';
-import { runBin } from './runProgram';
+import { Program, describe, project, projectRoot } from './programs';
+import { diskFs, runOn, vexSdkRoot } from './runProgram';
 import { isMac, isWindows, usbipExe } from './runner';
 import { cfg, slotSetting } from './settings';
 import { SimInstance } from './simInstance';
@@ -25,7 +25,7 @@ export function initRunOnSim(context: vscode.ExtensionContext, sim: SimInstance,
   if (isMac) {
     const button = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 49);
     button.text = '$(run) Run on Sim';
-    button.tooltip = "Install and run a program (.bin) on the simulated brain. On a Mac, VEXcode's Download button can't see the simulator.";
+    button.tooltip = "Install and run a program on the simulated brain: a .bin, a PROS project (hot/cold too), a VEXcode Python project. On a Mac, VEXcode's Download button can't see the simulator.";
     button.command = 'v5sim.runProgram';
     button.show();
     context.subscriptions.push(button);
@@ -34,14 +34,19 @@ export function initRunOnSim(context: vscode.ExtensionContext, sim: SimInstance,
     }));
   }
 
+  // one offer per build: a PROS build writes its hot and cold packages (and
+  // more), so builds in a project are keyed by the project
   const timers = new Map<string, ReturnType<typeof setTimeout>>();
   const built = (uri: vscode.Uri) => {
-    if (!isProgramBuild(uri.fsPath)) return;
-    clearTimeout(timers.get(uri.fsPath));
-    timers.set(uri.fsPath, setTimeout(() => {
-      timers.delete(uri.fsPath);
-      log?.appendLine(`[v5sim] new build: ${uri.fsPath}`);
-      void offerRun(sim, uri.fsPath);
+    const file = uri.fsPath;
+    const root = projectRoot(file, diskFs);
+    if (!root && !isProgramBuild(file)) return;
+    const key = root ?? file;
+    clearTimeout(timers.get(key));
+    timers.set(key, setTimeout(() => {
+      timers.delete(key);
+      log?.appendLine(`[v5sim] new build: ${file}`);
+      void offerBuild(sim, file, root);
     }, SETTLE_MS));
   };
   const watcher = vscode.workspace.createFileSystemWatcher('**/{build,bin}/*.bin');
@@ -56,8 +61,20 @@ async function markVexProject(): Promise<void> {
   await vscode.commands.executeCommand('setContext', 'v5sim.vexProject', found.length > 0);
 }
 
-/** A build just wrote a program: run it on the sim, or offer to. */
-async function offerRun(sim: SimInstance, file: string): Promise<void> {
+/** A build just wrote a program: run it on the sim, or offer to. In a PROS
+ *  or VEXcode project, what the project runs (a hot/cold pair, in its slot). */
+async function offerBuild(sim: SimInstance, file: string, root: string | undefined): Promise<void> {
+  let program: Program = { kind: 'bin', file };
+  let slot = slotSetting();
+  if (root) {
+    const proj = project(root, diskFs, vexSdkRoot());
+    if (!proj?.program) {
+      log?.appendLine(`[v5sim]   not offered: ${proj?.problem ?? 'not a program'}`);
+      return;
+    }
+    program = proj.program;
+    slot = proj.slot ?? slot;
+  }
   const action = buildAction(cfg().get<string>('runOnBuild', 'ask'),
     { isMac, windowsUsb: isWindows && !!usbipExe() });
   if (action === 'none') {
@@ -66,14 +83,13 @@ async function offerRun(sim: SimInstance, file: string): Promise<void> {
     return;
   }
   log?.appendLine(`[v5sim]   ${action === 'run' ? 'running it (v5sim.runOnBuild is "always")' : 'offering Run on Sim'}`);
-  const slot = slotSetting();
   if (action === 'run') {
-    await runBin(sim, file, slot);
+    await runOn(sim, program, slot);
     return;
   }
   const run = 'Run on Sim', always = 'Always', never = "Don't ask";
   const pick = await vscode.window.showInformationMessage(
-    `New build: ${path.basename(file)}. Run it on the simulated brain (slot ${slot})?`, run, always, never);
+    `New build: ${describe(program)}. Run it on the simulated brain (slot ${slot})?`, run, always, never);
   if (pick === always) await cfg().update('runOnBuild', 'always', vscode.ConfigurationTarget.Global);
   if (pick === never) {
     await cfg().update('runOnBuild', 'never', vscode.ConfigurationTarget.Global);
@@ -81,7 +97,7 @@ async function offerRun(sim: SimInstance, file: string): Promise<void> {
       'Builds won\'t offer to run on the simulator. Use "V5 Sim: Run Program on Sim", or set v5sim.runOnBuild.');
     return;
   }
-  if (pick === run || pick === always) await runBin(sim, file, slot);
+  if (pick === run || pick === always) await runOn(sim, program, slot);
 }
 
 /** Once: why VEXcode's Download button doesn't see the simulator on a Mac. */

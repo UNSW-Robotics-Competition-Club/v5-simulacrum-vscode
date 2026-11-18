@@ -10,6 +10,11 @@ on:
     branches: [main]
     paths-ignore: ['**.md', '.vscode/**']
   workflow_dispatch:
+    inputs:
+      sim_ref:
+        description: 'The simulator (v5-simulacrum) branch, tag or commit to build the runtime from'
+        required: false
+        default: main
 
 # A newer push to the same branch supersedes a running build.
 concurrency:
@@ -35,7 +40,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: UNSW-Robotics-Competition-Club/v5-simulacrum
-          ref: main
+          ref: ${{ inputs.sim_ref || 'main' }}
           path: simsrc
           token: ${{ secrets.SIM_REPO_TOKEN || github.token }}
       # QEMU is most of the build (minutes; macOS minutes cost 10x) and only

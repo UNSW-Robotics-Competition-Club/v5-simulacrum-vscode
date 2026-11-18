@@ -157,6 +157,11 @@
           "command": "v5sim.runProgram",
           "when": "resourceExtname == .bin",
           "group": "navigation"
+        },
+        {
+          "command": "v5sim.runProgram",
+          "when": "resourceExtname == .py && v5sim.vexProject",
+          "group": "navigation"
         }
       ],
       "commandPalette": [

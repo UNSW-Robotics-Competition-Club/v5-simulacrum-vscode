@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 
 import { PortsPanel } from './panels/portsPanel';
 import { Page, WebPanel } from './panels/webPanel';
-import { programTerminal, runProgram } from './runProgram';
+import { initPrograms, programTerminal, runProgram } from './runProgram';
 import { initRunOnSim } from './runOnSim';
 import { quietWhenClosed } from './safeLog';
 import { initRuntime, simRunner } from './runtime';
@@ -104,6 +104,7 @@ export function activate(context: vscode.ExtensionContext): void {
     context.subscriptions.push(vscode.commands.registerCommand(id, fn));
   }
   context.subscriptions.push(log, status, s);
+  initPrograms(context);
   initRunOnSim(context, s, log);
 
   // the activity-bar view: its welcome content holds the buttons
