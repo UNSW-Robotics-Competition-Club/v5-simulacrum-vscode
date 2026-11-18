@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.12 (beta)
 
 - **Setting up shows its progress**: the first start after installing or updating says how many of the simulator's files are unpacked and for how long, with a progress bar, and writes the same to the V5 Sim output (shown while it unpacks). VEXos's check shows its time too.
 - **Slow computers**: unpacking may take up to 10 minutes (was 3) before it counts as failed, for computers that scan every new file.
