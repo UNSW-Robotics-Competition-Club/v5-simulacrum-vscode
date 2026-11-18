@@ -11,6 +11,7 @@ import * as vscode from 'vscode';
 
 import { Runner, isWindows } from './runner';
 import { repoPath, wslDistro } from './settings';
+import { fetchRuntime, runtimePlatform } from './runtimeDownload';
 
 import { DATA_DIR, Mode, UnpackProgress, bundledEnv, chooseMode, installScript, parseInstallOutput, parseWslList } from './runtimeCore';
 export { DATA_DIR };
@@ -68,28 +69,50 @@ async function resolve(force: boolean): Promise<Runner | undefined> {
   const m = chooseMode(await repoPath(false), tarball);
   currentMode = m.kind;
   if (m.kind === 'repo') return new Runner(m.repo, distro);
-  if (m.kind === 'none') {
-    // a runtime-free .vsix: ask for a checkout, as before
-    const repo = await repoPath(true);
-    if (repo) currentMode = 'repo';
-    return repo ? new Runner(repo, distro) : undefined;
+  // no simulator in this .vsix (the platform-neutral package): download the
+  // one for this computer from the extension's releases
+  const plat = runtimePlatform(process.platform, process.arch);
+  if (m.kind === 'none' && !plat) {
+    throw new Error(`there's no simulator for ${process.platform} ${process.arch} (Windows x64 with WSL, and Macs, are supported)`);
   }
+  currentMode = 'bundled';
   if (isWindows && !(await wslReady(distro))) return undefined;
   return vscode.window.withProgress({
     location: vscode.ProgressLocation.Notification,
     title: 'V5 simulator', cancellable: false,
   }, async progress => {
-    // a Runner just for setup: no root yet
-    const setup = new Runner(path.dirname(m.tarball), distro);
     const steps = stepper(progress);
-    steps.step('getting the simulator ready...');
     const version = context?.extension.packageJSON.version ?? '0';
+    let tarball: string;
+    let base = 0;                               // the bar's part done before unpacking
+    if (m.kind === 'bundled') {
+      tarball = m.tarball;
+    } else {
+      steps.step('downloading the simulator (once)...');
+      log?.show(true);
+      let tenth = 0;
+      const mb = (n: number) => (n / 1e6).toFixed(0);
+      tarball = await fetchRuntime(path.join(context!.globalStorageUri.fsPath, 'runtime'), version, plat!,
+        (got, total) => {
+          const f = total ? got / total : 0;
+          steps.update(`downloading the simulator (once): ${mb(got)}${total ? ` of ${mb(total)}` : ''} MB...`, f * DOWNLOAD_SHARE);
+          if (Math.floor(f * 10) > tenth) { tenth = Math.floor(f * 10); log?.appendLine(`[v5sim]   ${tenth * 10}%: ${mb(got)} MB`); }
+        }, line => log?.appendLine(line))
+        .catch((e: Error) => {
+          throw new Error(`couldn't download the simulator (${e.message}). Check the internet connection, then V5 Sim: Repair Simulator`);
+        });
+      log?.appendLine(`[v5sim] downloaded in ${steps.end()} s: ${tarball}`);
+      base = DOWNLOAD_SHARE;
+    }
+    // a Runner just for setup: no root yet
+    const setup = new Runner(path.dirname(tarball), distro);
+    steps.step('getting the simulator ready...', base);
     const unpack = new UnpackProgress();
     const tail: string[] = [];                  // the last lines, for an error
     log?.appendLine(`[v5sim] setting up the bundled simulator ${version}`);
     let logged = 0;                             // the last tenth logged
     const t0 = Date.now();
-    const r = await setup.shellLines(installScript(await setup.toUnix(m.tarball), version, force), line => {
+    const r = await setup.shellLines(installScript(await setup.toUnix(tarball), version, force), line => {
       tail.push(line);
       if (tail.length > 5) tail.shift();
       if (!unpack.feed(line)) { log?.appendLine(line); return; }
@@ -97,7 +120,7 @@ async function resolve(force: boolean): Promise<Runner | undefined> {
         // the first start after an install or update: show the log too
         log?.appendLine(`[v5sim] unpacking the simulator: ${unpack.total} files (once per install or update)`);
         log?.show(true);
-        steps.step('unpacking the simulator (once per install or update)...');
+        steps.step('unpacking the simulator (once per install or update)...', base);
         logged = 0;
         return;
       }
@@ -107,7 +130,7 @@ async function resolve(force: boolean): Promise<Runner | undefined> {
         log?.appendLine(`[v5sim]   ${tenth * 10}%: ${unpack.done} of ${unpack.total} files, ${Math.round((Date.now() - t0) / 1000)} s`);
       }
       steps.update(`unpacking the simulator (once per install or update): ${unpack.done} of ${unpack.total} files...`,
-        unpack.fraction * UNPACK_SHARE);
+        base + unpack.fraction * (UNPACK_SHARE - base));
     }, UNPACK_TIMEOUT_MS);
     if (r.stderr) log?.append(r.stderr);
     const unpacked = steps.end();
@@ -137,7 +160,9 @@ async function resolve(force: boolean): Promise<Runner | undefined> {
 /** Unpacking may take minutes where every new file is scanned (antivirus on
  *  a managed Mac or PC). */
 const UNPACK_TIMEOUT_MS = 600_000;
-/** The part of the progress bar unpacking fills (VEXos the rest). */
+/** The progress bar: a download (when there is one) fills it to
+ *  DOWNLOAD_SHARE, unpacking to UNPACK_SHARE, checking VEXos the rest. */
+const DOWNLOAD_SHARE = 0.35;
 const UNPACK_SHARE = 0.8;
 
 type Progress = vscode.Progress<{ message?: string; increment?: number }>;
