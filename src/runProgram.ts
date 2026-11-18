@@ -55,7 +55,8 @@ export async function runProgram(sim: SimInstance, given?: string): Promise<void
   await runBin(sim, file, slot);
 }
 
-async function runBin(sim: SimInstance, file: string, slot: number): Promise<void> {
+/** Install file in slot and start it: the sim restarts with --run. */
+export async function runBin(sim: SimInstance, file: string, slot: number): Promise<void> {
   if (sim.state !== 'stopped' && !sim.owned) {
     const ok = await vscode.window.showWarningMessage(
       `Restart simulator instance ${sim.current?.id ?? ''} from VS Code to run ${path.basename(file)}?`,

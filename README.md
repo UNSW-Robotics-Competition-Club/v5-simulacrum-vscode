@@ -70,7 +70,11 @@ Everything else (the emulator, Python, the robot simulator) comes inside the ext
 
 **"WSL can't run Windows programs".** Ubuntu 24.04 can switch off WSL's ability to run Windows programs at boot. The extension then puts the brain on USB itself and offers **Fix WSL**, which turns it back on now and after reboots.
 
-**macOS: VEXcode's Download button can't see the brain.** On a Mac the brain's USB is two serial ports (`/tmp/ttyV5sys` for uploads, `/tmp/ttyV5user` for program output). Use **Run Program on Sim**, or the PROS CLI with the port given.
+**macOS: VEXcode's Download button can't see the brain.** On a Mac the brain's USB is two serial ports (`/tmp/ttyV5sys` for uploads, `/tmp/ttyV5user` for program output), not a USB device. Instead:
+- **Build as usual**: when the build finishes, the extension offers **Run on Sim**, which installs the new program in the simulated brain (slot `v5sim.slot`) and starts it. **Always** stops it asking (setting `v5sim.runOnBuild`).
+- **▶ Run on Sim** in the status bar, or in a VEXcode project's editor title bar, picks a program to run.
+- Right-click a `.bin` → **Run Program on Sim**.
+- The PROS CLI with the port given: `pros upload --port /tmp/ttyV5sys`.
 
 **Anything else.** **V5 Sim: Show Log** shows what the simulator is doing. **V5 Sim: Repair Simulator** unpacks it again.
 

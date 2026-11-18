@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Run on Sim is easy to find on a Mac**, where VEXcode's Download button can't see the simulator: after a build, the extension offers to run the new program on the simulated brain (or always does, with `v5sim.runOnBuild`); a **▶ Run on Sim** button in the status bar and in VEXcode projects' editor title bar; and a one-time tip saying so. The build offer also appears on Windows without the USB driver.
+
 ## 0.3.12 (beta)
 
 - **Setting up shows its progress**: the first start after installing or updating says how many of the simulator's files are unpacked and for how long, with a progress bar, and writes the same to the V5 Sim output (shown while it unpacks). VEXos's check shows its time too.

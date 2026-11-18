@@ -140,6 +140,11 @@
           "command": "v5sim.configurePorts",
           "when": "resourceExtname == .args",
           "group": "navigation"
+        },
+        {
+          "command": "v5sim.runProgram",
+          "when": "isMac && v5sim.vexProject",
+          "group": "navigation"
         }
       ],
       "explorer/context": [
@@ -243,6 +248,21 @@
           "type": "boolean",
           "default": true,
           "description": "Open the brain screen when a simulator starts."
+        },
+        "v5sim.runOnBuild": {
+          "type": "string",
+          "enum": [
+            "ask",
+            "always",
+            "never"
+          ],
+          "enumDescriptions": [
+            "Offer to run each new build on the simulated brain",
+            "Run each new build on the simulated brain",
+            "Do nothing"
+          ],
+          "default": "ask",
+          "markdownDescription": "When a build writes a program (VEXcode's `build/*.bin`, PROS's `bin/monolith.bin`): run it on the simulated brain in slot `v5sim.slot`. For a Mac, where VEXcode's Download button can't see the simulator; not on Windows with usbip-win2, where it can."
         }
       }
     },
