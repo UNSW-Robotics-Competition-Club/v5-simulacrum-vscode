@@ -62,6 +62,8 @@ export function feedbackEnvelope(d: Dsn, id: string, report: Report, links: { re
     level: 'info',
     release: typeof env.extension === 'string' ? `v5sim-vscode@${env.extension}` : undefined,
     environment: 'production',
+    // without it Sentry shows the SDK as <invalid>
+    sdk: { name: 'v5sim.feedback-worker', version: '1.0.0' },
     tags: {
       kind: report.kind,
       report: id,
