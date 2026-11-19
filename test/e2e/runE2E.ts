@@ -8,7 +8,10 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { runTests } from '@vscode/test-electron';
 
+import { startFakeSentry } from './fakeSentry';
+
 async function main(): Promise<void> {
+  const sentry = await startFakeSentry();
   const root = path.resolve(__dirname, '..', '..', '..');
   const work = fs.mkdtempSync(path.join(os.tmpdir(), 'v5sim-e2e-'));
   const project = path.join(work, 'my robot');
@@ -32,8 +35,10 @@ async function main(): Promise<void> {
       E2E_ENDPOINT: process.env.E2E_ENDPOINT ?? 'http://localhost:8799',
       E2E_TOKEN: process.env.E2E_TOKEN ?? '',
       E2E_WORK: work,
+      E2E_SENTRY: sentry.url,
+      V5SIM_SENTRY_DSN: sentry.dsn,
     },
-  });
+  }).finally(() => sentry.close());
 }
 
 main().catch(e => {

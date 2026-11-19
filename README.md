@@ -62,6 +62,7 @@ Everything else (the emulator, Python, the robot simulator) comes inside the ext
 | `v5sim.wslDistro` | `Ubuntu-24.04` | Windows: the WSL distribution |
 | `v5sim.instanceId` | `auto` | Which simulator instance; instance N serves its pages on port 8765+N |
 | `v5sim.openBrainOnStart` | `true` | Open the brain screen when the simulator starts |
+| `v5sim.errorReporting` | `true` | Send automatic error reports (also needs VS Code's telemetry on) |
 | `v5sim.feedbackEndpoint` | the maintainers' server | Where **Report a Problem** sends reports; empty: save a zip and open a GitHub issue instead |
 | `v5sim.repoPath` | | A simulator checkout to use instead of the bundled one (for simulator development) |
 
@@ -83,7 +84,11 @@ Everything else (the emulator, Python, the robot simulator) comes inside the ext
 - **The V5 Sim log and your setup** (on by default): versions, OS, your `v5sim.*` settings. Your home folder and user name are taken out.
 - **Your project folder** (off by default): its source files, listed before you send. Build output, `.git`, dependencies, and files that may hold passwords or keys (`.env`, `*.pem`, `.vscode/settings.json`…) are left out; at most 10 MB.
 
-Reports are stored privately for the maintainers. If the report can't be sent (offline, or `v5sim.feedbackEndpoint` emptied), it's saved as a zip and a prefilled GitHub issue opens for you to attach it.
+Reports are stored privately for the maintainers; the summary, details and contact also appear in their issue tracker (Sentry), while attached files stay on their server. If the report can't be sent (offline, or `v5sim.feedbackEndpoint` emptied), it's saved as a zip and a prefilled GitHub issue opens for you to attach it.
+
+**Automatic error reports.** When the simulator fails to set up or start, or the extension hits an error, it sends the maintainers a short report: the error, where in the extension it happened, the extension, VS Code and OS versions, and for a failed start the last lines of the V5 Sim log. Your home folder, user name and computer name are taken out, and no code is sent. It follows VS Code's telemetry setting (`telemetry.telemetryLevel`: sent at `all` or `error`, never at `crash` or `off`); `v5sim.errorReporting: false` turns it off for this extension only.
+
+What is sent, where it's kept and for how long: [PRIVACY.md](PRIVACY.md).
 
 Or directly: [GitHub issues](https://github.com/UNSW-Robotics-Competition-Club/v5-simulacrum-vscode/issues). Building the extension or working on the simulator: see [DEVELOPMENT.md](DEVELOPMENT.md).
 

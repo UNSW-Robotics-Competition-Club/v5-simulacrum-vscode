@@ -10,6 +10,7 @@ import { initRuntime, simRunner } from './runtime';
 import { cfg } from './settings';
 import { SimInstance } from './simInstance';
 import { initUsbDriver, installUsbDriver } from './usbDriver';
+import { initErrorReporting } from './errors/errorReporting';
 
 let sim: SimInstance | undefined;
 
@@ -17,6 +18,7 @@ export function activate(context: vscode.ExtensionContext): void {
   // teed so a feedback report can include it (output channels can't be read)
   const logBuffer = new LogBuffer();
   const log = teeLog(quietWhenClosed(vscode.window.createOutputChannel('V5 Sim')), logBuffer);
+  initErrorReporting(context, logBuffer);
   initRuntime(context, log);
   initUsbDriver(context);
   sim = new SimInstance(log);

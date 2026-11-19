@@ -15,6 +15,7 @@ import { cfg, presetFile, slotSetting } from './settings';
 import { OutputBudget } from './outputBudget';
 import { offerUsbDriver } from './usbDriver';
 import { INTEROP_REPAIR, attachBrain, attachedVport, detachBrain, usbipPorts } from './usbip';
+import { reportError } from './errors/errorReporting';
 
 /** How long stop() waits for an attach still in flight before going on. */
 const ATTACH_WAIT_ON_STOP_MS = 5_000;
@@ -135,6 +136,7 @@ export class SimInstance implements vscode.Disposable {
     } catch (e) {
       this.set('stopped', undefined);
       vscode.window.showErrorMessage(`Couldn't start the simulator: ${(e as Error).message}`);
+      reportError('start', e, { withLog: true });
     }
   }
 
@@ -146,6 +148,7 @@ export class SimInstance implements vscode.Disposable {
     if (this.proc !== proc || this.state !== 'starting') return;
     this.proc = undefined;
     this.set('stopped', undefined);
+    reportError('start', why, { withLog: true });
     const show = 'Show log';
     void vscode.window.showErrorMessage(`Couldn't start the simulator: ${why}.`, show).then(pick => {
       if (pick === show) this.log.show();
@@ -195,6 +198,7 @@ export class SimInstance implements vscode.Disposable {
     if (r.vport === undefined) {
       if (this.proc === proc && this.state === 'running') {
         vscode.window.showErrorMessage(`The simulated brain isn't on Windows USB: ${r.output}`);
+        reportError('usb-attach', r.output, { withLog: true });
       }
       return;
     }
@@ -247,6 +251,7 @@ export class SimInstance implements vscode.Disposable {
       vscode.window.showInformationMessage('WSL interop fixed (and set up to stay on after reboots).');
     } else {
       vscode.window.showErrorMessage(`Couldn't fix WSL interop: ${(r.stderr || r.stdout).trim() || `exit ${r.code}`}. See the V5 Sim output.`);
+      reportError('wsl-interop', (r.stderr || r.stdout).trim() || `exit ${r.code}`);
     }
   }
 

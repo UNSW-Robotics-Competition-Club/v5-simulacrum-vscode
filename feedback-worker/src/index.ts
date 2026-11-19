@@ -2,9 +2,12 @@
 // user agreed, a zip bundle (log, environment, project folder) as
 // multipart/form-data to /report. Reports land in R2 under
 // reports/<yyyy-mm-dd>/<uuid>/; maintainers read them through /admin with a
-// bearer token (scripts/reports.mjs).
+// bearer token (scripts/reports.mjs). With SENTRY_DSN set, each report also
+// shows up in Sentry's User Feedback, with signed download links (LINK_KEY)
+// to its files; the files themselves never go to Sentry.
 
-import { MAX_BUNDLE_BYTES, MAX_REQUEST_BYTES, ZIP_MAGIC, parseReport } from './validate';
+import { envelopeUrl, feedbackEnvelope, parseDsn, sign, verify } from './sentryFeedback';
+import { MAX_BUNDLE_BYTES, MAX_REQUEST_BYTES, type Report, ZIP_MAGIC, parseReport } from './validate';
 
 export interface Env {
   REPORTS: R2Bucket;
@@ -12,13 +15,22 @@ export interface Env {
   /** all senders together: caps what can be stored in a day */
   GLOBAL_LIMITER: RateLimit;
   ADMIN_TOKEN?: string;
+  /** Sentry project for user feedback; unset: not forwarded */
+  SENTRY_DSN?: string;
+  /** key for the download links in Sentry; unset: no links */
+  LINK_KEY?: string;
 }
+
+/** How long the download links in Sentry work. */
+const LINK_LIFETIME_S = 60 * 24 * 3600;
+
+const FILE_PATH =/^(\d{4}-\d{2}-\d{2}\/[0-9a-f-]{36})\/(report\.json|bundle\.zip)$/;
 
 const json = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 const fail = (status: number, error: string) => json(status, { ok: false, error });
 
-async function intake(request: Request, env: Env): Promise<Response> {
+async function intake(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
   const ip = request.headers.get('cf-connecting-ip') ?? 'unknown';
   const { success } = await env.LIMITER.limit({ key: ip });
   if (!success) return fail(429, 'too many reports from here; try again in a minute');
@@ -67,7 +79,63 @@ async function intake(request: Request, env: Env): Promise<Response> {
     httpMetadata: { contentType: 'application/json' },
     customMetadata: { kind: report.kind, summary: report.summary.slice(0, 200) },
   });
+  // after answering: the student doesn't wait on Sentry
+  ctx.waitUntil(toSentry(request, env, id, report, !!bytes).catch(e => console.error('sentry feedback failed', e)));
   return json(201, { ok: true, id });
+}
+
+async function toSentry(request: Request, env: Env, id: string, report: Report, hasBundle: boolean): Promise<void> {
+  const dsn = env.SENTRY_DSN ? parseDsn(env.SENTRY_DSN) : undefined;
+  if (!dsn) return;
+  const origin = new URL(request.url).origin;
+  const exp = Math.floor(Date.now() / 1000) + LINK_LIFETIME_S;
+  const link = async (file: string) => {
+    if (!env.LINK_KEY) return undefined;
+    const path = `${id}/${file}`;
+    return `${origin}/d/${path}?exp=${exp}&sig=${await sign(env.LINK_KEY, `${path}|${exp}`)}`;
+  };
+  const envelope = feedbackEnvelope(dsn, id, report, {
+    report: await link('report.json'),
+    bundle: hasBundle ? await link('bundle.zip') : undefined,
+  });
+  const res = await fetch(envelopeUrl(dsn), { method: 'POST', body: envelope,
+    headers: { 'content-type': 'application/x-sentry-envelope' } });
+  if (!res.ok) throw new Error(`sentry answered ${res.status}: ${(await res.text()).slice(0, 200)}`);
+}
+
+/** /d/<day>/<uuid>/<file>?exp=<unix s>&sig=...: a report file through a
+ *  signed link, until it expires (after that, /admin). */
+async function download(request: Request, env: Env, rest: string): Promise<Response> {
+  if (request.method !== 'GET') return fail(405, 'GET only');
+  const m = FILE_PATH.exec(rest);
+  const q = new URL(request.url).searchParams;
+  const exp = q.get('exp') ?? '';
+  const sig = q.get('sig') ?? '';
+  if (!/^\d{1,12}$/.test(exp) || Number(exp) < Date.now() / 1000) return fail(410, 'this link has expired');
+  if (!m || !env.LINK_KEY || !(await verify(env.LINK_KEY, `${rest}|${exp}`, sig))) return fail(404, 'not found');
+  const obj = await env.REPORTS.get(`reports/${rest}`);
+  if (!obj) return fail(404, 'not found');
+  return new Response(obj.body, { headers: {
+    'content-type': obj.httpMetadata?.contentType ?? 'application/octet-stream',
+    'content-disposition': `attachment; filename="v5sim-${m[1].replace('/', '-')}-${m[2]}"`,
+    'cache-control': 'private, no-store',
+  } });
+}
+
+const REPORT_ID = /^\/(\d{4}-\d{2}-\d{2}\/[0-9a-f-]{36})$/;
+
+/** DELETE /admin/reports/<day>/<uuid>: a report and its bundle, for good
+ *  (a deletion request). Its download links stop working with it; a copy
+ *  forwarded to Sentry's User Feedback has to be deleted there. */
+async function deleteReport(env: Env, rest: string): Promise<Response> {
+  const m = REPORT_ID.exec(rest);
+  if (!m) return fail(404, 'not found');
+  const keys = [`reports/${m[1]}/report.json`, `reports/${m[1]}/bundle.zip`];
+  const found = (await Promise.all(keys.map(k => env.REPORTS.head(k)))).map((o, i) => (o ? keys[i] : undefined))
+    .filter((k): k is string => !!k);
+  if (!found.length) return fail(404, 'not found');
+  await env.REPORTS.delete(found);
+  return json(200, { ok: true, deleted: found.map(k => k.slice('reports/'.length)) });
 }
 
 /** Constant-time compare, so the token can't be guessed byte by byte. */
@@ -82,7 +150,8 @@ function sameToken(given: string, want: string): boolean {
 async function admin(request: Request, env: Env, rest: string): Promise<Response> {
   const auth = request.headers.get('authorization') ?? '';
   if (!env.ADMIN_TOKEN || !sameToken(auth, `Bearer ${env.ADMIN_TOKEN}`)) return fail(401, 'unauthorized');
-  if (request.method !== 'GET') return fail(405, 'GET only');
+  if (request.method === 'DELETE') return await deleteReport(env, rest);
+  if (request.method !== 'GET') return fail(405, 'GET or DELETE only');
   const url = new URL(request.url);
   if (rest === '' || rest === '/') {
     const listed = await env.REPORTS.list({
@@ -97,7 +166,7 @@ async function admin(request: Request, env: Env, rest: string): Promise<Response
         ...o.customMetadata }));
     return json(200, { reports, cursor: listed.truncated ? listed.cursor : null });
   }
-  const m = /^\/(\d{4}-\d{2}-\d{2}\/[0-9a-f-]{36})\/(report\.json|bundle\.zip)$/.exec(rest);
+  const m = FILE_PATH.exec(rest.slice(1));
   if (!m) return fail(404, 'not found');
   const obj = await env.REPORTS.get(`reports/${m[1]}/${m[2]}`);
   if (!obj) return fail(404, 'not found');
@@ -105,12 +174,13 @@ async function admin(request: Request, env: Env, rest: string): Promise<Response
 }
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const { pathname } = new URL(request.url);
     try {
       if (pathname === '/report') {
-        return request.method === 'POST' ? await intake(request, env) : fail(405, 'POST only');
+        return request.method === 'POST' ? await intake(request, env, ctx) : fail(405, 'POST only');
       }
+      if (pathname.startsWith('/d/')) return await download(request, env, pathname.slice(3));
       if (pathname === '/admin' || pathname.startsWith('/admin/reports')) {
         return await admin(request, env, pathname.replace(/^\/admin(\/reports)?/, ''));
       }
