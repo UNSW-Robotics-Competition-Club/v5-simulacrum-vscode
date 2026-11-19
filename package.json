@@ -108,6 +108,12 @@
         "icon": "$(run)"
       },
       {
+        "command": "v5sim.runEditorProgram",
+        "title": "Run This Project on Sim",
+        "category": "V5 Sim",
+        "icon": "$(run)"
+      },
+      {
         "command": "v5sim.programTerminal",
         "title": "Open Program Terminal",
         "category": "V5 Sim",
@@ -142,7 +148,7 @@
           "group": "navigation"
         },
         {
-          "command": "v5sim.runProgram",
+          "command": "v5sim.runEditorProgram",
           "when": "isMac && v5sim.vexProject",
           "group": "navigation"
         }
@@ -171,6 +177,10 @@
         },
         {
           "command": "v5sim.menu",
+          "when": "false"
+        },
+        {
+          "command": "v5sim.runEditorProgram",
           "when": "false"
         }
       ]

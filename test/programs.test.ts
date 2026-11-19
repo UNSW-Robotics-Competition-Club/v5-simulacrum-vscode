@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import * as path from 'node:path';
 import { test } from 'node:test';
 
-import { Fs, compareVersions, project, projectRoot, prosProject, pythonVm, vexProject } from '../src/programs';
+import { Fs, Project, compareVersions, programForEditor, programForFile, project, projectRoot, prosProject, pythonVm, vexProject } from '../src/programs';
 
 /** A fake file system: path -> [mtime, contents]; folders are implied. */
 function fakeFs(files: Record<string, [number, string?]>): Fs {
@@ -106,4 +106,36 @@ test('SDK versions compare by number', () => {
   assert.ok(compareVersions('V5_1_0_1_25', 'V5_1_0_1_9') > 0);
   assert.ok(compareVersions('V5_1_0_2', 'V5_1_0_1_99') > 0);
   assert.equal(compareVersions('V5_1_0_1', 'V5_1_0_1'), 0);
+});
+
+const cppProject: Project = { label: 'robot', slot: 3, program: { kind: 'bin', file: '/p/build/robot.bin' } };
+const pyProject: Project = { label: 'py', slot: 2, program: { kind: 'python', file: '/q/src/main.py', link: '/vm/python_vm.bin' } };
+const prosHotCold: Project = { label: 'pros', program: { kind: 'hotcold', file: '/r/bin/hot.package.bin', link: '/r/bin/cold.package.bin' } };
+
+test('the editor button runs the open file\'s project, whichever file is open', () => {
+  // the review's case: main.cpp open in a VEXcode C++ project must not run as a .bin
+  assert.deepEqual(programForEditor(cppProject), { program: cppProject.program, slot: 3 });
+  // a second .py in a Python project: still the project's main.py
+  assert.deepEqual(programForEditor(pyProject), { program: pyProject.program, slot: 2 });
+  assert.deepEqual(programForEditor({ label: 'x', problem: 'not built yet' }), { problem: 'not built yet' });
+  assert.equal(programForEditor(undefined), undefined, 'no project: the caller asks');
+});
+
+test('a chosen file runs as its project\'s program, as itself, or not at all', () => {
+  // part of its project: the project's program
+  assert.deepEqual(programForFile('/r/bin/cold.package.bin', prosHotCold, undefined), { program: prosHotCold.program, slot: undefined });
+  assert.deepEqual(programForFile('/q/src/main.py', pyProject, '/vm/python_vm.bin'), { program: pyProject.program, slot: 2 });
+  // a lone hot/cold half
+  assert.match(programForFile('/x/hot.package.bin', undefined, undefined).problem!, /half of a PROS hot\/cold program/);
+  // a .bin or .py as itself, in its project's slot
+  assert.deepEqual(programForFile('/p/build/old.bin', cppProject, undefined), { program: { kind: 'bin', file: '/p/build/old.bin' }, slot: 3 });
+  assert.deepEqual(programForFile('/q/src/other.py', pyProject, '/vm/python_vm.bin'),
+    { program: { kind: 'python', file: '/q/src/other.py', link: '/vm/python_vm.bin' }, slot: 2 });
+  assert.match(programForFile('/q/src/other.py', pyProject, undefined).problem!, /Python runtime isn't installed/);
+  // source is not a program
+  for (const f of ['/p/src/main.cpp', '/p/include/robot.h', '/p/project.pros', '/p/.vscode/vex_project_settings.json']) {
+    const r = programForFile(f, cppProject, undefined);
+    assert.equal(r.program, undefined, f);
+    assert.match(r.problem!, /isn't a V5 program/, f);
+  }
 });

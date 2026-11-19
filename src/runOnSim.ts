@@ -82,22 +82,66 @@ async function offerBuild(sim: SimInstance, file: string, root: string | undefin
       ? "the brain is on Windows USB (VEXcode's Download reaches it)" : 'v5sim.runOnBuild is "never"'));
     return;
   }
-  log?.appendLine(`[v5sim]   ${action === 'run' ? 'running it (v5sim.runOnBuild is "always")' : 'offering Run on Sim'}`);
   if (action === 'run') {
-    await runOn(sim, program, slot);
+    log?.appendLine('[v5sim]   running it (v5sim.runOnBuild is "always")');
+    await runNewest(sim, program, slot);
     return;
   }
-  const run = 'Run on Sim', always = 'Always', never = "Don't ask";
-  const pick = await vscode.window.showInformationMessage(
-    `New build: ${describe(program)}. Run it on the simulated brain (slot ${slot})?`, run, always, never);
-  if (pick === always) await cfg().update('runOnBuild', 'always', vscode.ConfigurationTarget.Global);
-  if (pick === never) {
-    await cfg().update('runOnBuild', 'never', vscode.ConfigurationTarget.Global);
-    void vscode.window.showInformationMessage(
-      'Builds won\'t offer to run on the simulator. Use "V5 Sim: Run Program on Sim", or set v5sim.runOnBuild.');
+  const key = root ?? file;
+  if (offers.has(key)) {
+    // one offer per project: the open one runs this newer build if accepted
+    offers.set(key, { program, slot });
+    log?.appendLine('[v5sim]   an offer is already open: it will run this build');
     return;
   }
-  if (pick === run || pick === always) await runOn(sim, program, slot);
+  log?.appendLine('[v5sim]   offering Run on Sim');
+  offers.set(key, { program, slot });
+  try {
+    const run = 'Run on Sim', always = 'Always', never = "Don't ask";
+    const pick = await vscode.window.showInformationMessage(
+      `New build: ${describe(program)}. Run it on the simulated brain (slot ${slot})?`, run, always, never);
+    if (pick === always) await cfg().update('runOnBuild', 'always', vscode.ConfigurationTarget.Global);
+    if (pick === never) {
+      await cfg().update('runOnBuild', 'never', vscode.ConfigurationTarget.Global);
+      void vscode.window.showInformationMessage(
+        'Builds won\'t offer to run on the simulator. Use "V5 Sim: Run Program on Sim", or set v5sim.runOnBuild.');
+      return;
+    }
+    const newest = offers.get(key)!;
+    if (pick === run || pick === always) await runNewest(sim, newest.program, newest.slot);
+  } finally {
+    offers.delete(key);
+  }
+}
+
+/** Open offers, by project (or file): the newest build each would run. */
+const offers = new Map<string, { program: Program; slot: number }>();
+
+let running: Promise<void> | undefined;
+let queued: (() => Promise<void>) | undefined;
+
+/** One run at a time: a build that lands while one is starting replaces
+ *  any other waiting, so only the newest runs next (no overlapping
+ *  restarts, no "already starting"). */
+function runNewest(sim: SimInstance, program: Program, slot: number): Promise<void> {
+  const go = () => runOn(sim, program, slot);
+  if (running) {
+    queued = go;
+    return running;
+  }
+  running = (async () => {
+    try {
+      await go();
+      while (queued) {
+        const next = queued;
+        queued = undefined;
+        await next();
+      }
+    } finally {
+      running = undefined;
+    }
+  })();
+  return running;
 }
 
 /** Once: why VEXcode's Download button doesn't see the simulator on a Mac. */

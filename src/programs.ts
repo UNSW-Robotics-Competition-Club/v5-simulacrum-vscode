@@ -140,3 +140,33 @@ export function describe(p: Program): string {
   const base = path.basename(p.file);
   return p.kind === 'hotcold' ? `${base} + ${path.basename(p.link)}` : base;
 }
+
+export interface FileProgram { program?: Program; slot?: number; problem?: string }
+
+/** What a file chosen by the user runs as (the explorer's Run Program on
+ *  Sim, the file picker): its project's program when it is part of it (a
+ *  hot/cold half, the project's main.py), a .bin or a VEXcode Python .py as
+ *  itself, anything else not at all (a .cpp is source, not a program).
+ *  pythonVmFile: VEX's MicroPython VM, if installed. */
+export function programForFile(file: string, proj: Project | undefined, pythonVmFile: string | undefined): FileProgram {
+  const base = path.basename(file).toLowerCase();
+  const p = proj?.program;
+  if (p && (p.file === file || ('link' in p && p.link === file))) return { program: p, slot: proj!.slot };
+  if (base === 'hot.package.bin' || base === 'cold.package.bin') {
+    return { problem: `${path.basename(file)} is half of a PROS hot/cold program: run its project's build` };
+  }
+  if (base.endsWith('.py')) {
+    return pythonVmFile ? { program: { kind: 'python', file, link: pythonVmFile }, slot: proj?.slot }
+      : { problem: "VEX's Python runtime isn't installed: open a V5 Python project with the VEXcode extension once" };
+  }
+  if (base.endsWith('.bin')) return { program: { kind: 'bin', file }, slot: proj?.slot };
+  return { problem: `${path.basename(file)} isn't a V5 program (a .bin, or a VEXcode Python .py)` };
+}
+
+/** What the editor's Run on Sim button runs for the open file: its
+ *  project's program (whatever file of the project is open), or nothing,
+ *  so the caller can ask. */
+export function programForEditor(proj: Project | undefined): FileProgram | undefined {
+  if (!proj) return undefined;
+  return proj.program ? { program: proj.program, slot: proj.slot } : { problem: proj.problem };
+}

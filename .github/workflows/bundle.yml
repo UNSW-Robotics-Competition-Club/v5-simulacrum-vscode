@@ -108,6 +108,16 @@ jobs:
           done
           rm -rf runtime
           ls -l dist
+      - name: Release assets for the runtime download (runtime-*.tar.gz and SHA256SUMS)
+        run: |
+          mkdir -p release
+          cp runtimes/runtime-*.tar.gz release/
+          (cd release && sha256sum runtime-*.tar.gz > SHA256SUMS && cat SHA256SUMS)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-runtime-assets
+          path: release/*
+          if-no-files-found: error
       - uses: actions/upload-artifact@v4
         with:
           name: v5-simulacrum-vscode-darwin-arm64

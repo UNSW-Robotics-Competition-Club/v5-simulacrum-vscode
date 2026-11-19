@@ -23,7 +23,7 @@ The extension unpacks the runtime once per version into `~/.v5-simulacrum/runtim
 ## Releasing and publishing
 
 1. Bump `version` in `package.json` and add it to `CHANGELOG.md`; push to `main`. The **bundle** workflow builds the three platform packages.
-2. Create a GitHub release `v<version>` on that commit with the three `.vsix` files from the bundle run attached (mark it pre-release for a beta).
+2. Create a GitHub release `v<version>` on that commit with the three `.vsix` files from the bundle run attached (mark it pre-release for a beta). Also attach everything in the run's **release-runtime-assets** artifact (`runtime-<platform>.tar.gz` and `SHA256SUMS`): the platform-neutral package downloads the simulator from there, and until this version's release has them it uses an older release's (logged as such; replaced once they appear).
 3. Marketplace: `.github/workflows/publish.yml` publishes the release's packages with trusted publishing (`vsce publish --oidc`); no token is stored. Publishing a full release runs it; **Actions → publish → Run workflow** publishes any tag (a beta, or to the pre-release channel). It runs in the `marketplace` environment, which waits for a maintainer's approval. The Marketplace side is a Trusted Publishing policy on the publisher: owner `UNSW-Robotics-Competition-Club`, repository `v5-simulacrum-vscode`, workflow `publish.yml`, environment `marketplace`.
 
 ## Using a simulator checkout

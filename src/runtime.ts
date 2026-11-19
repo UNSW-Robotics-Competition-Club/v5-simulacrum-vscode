@@ -11,7 +11,7 @@ import * as vscode from 'vscode';
 
 import { Runner, isWindows } from './runner';
 import { repoPath, wslDistro } from './settings';
-import { fetchRuntime, runtimePlatform } from './runtimeDownload';
+import { fetchRuntime, installKey, runtimePlatform } from './runtimeDownload';
 
 import { DATA_DIR, Mode, UnpackProgress, bundledEnv, chooseMode, installScript, parseInstallOutput, parseWslList } from './runtimeCore';
 export { DATA_DIR };
@@ -84,24 +84,28 @@ async function resolve(force: boolean): Promise<Runner | undefined> {
     const steps = stepper(progress);
     const version = context?.extension.packageJSON.version ?? '0';
     let tarball: string;
+    let key = version;                          // the folder it unpacks into
     let base = 0;                               // the bar's part done before unpacking
     if (m.kind === 'bundled') {
       tarball = m.tarball;
     } else {
-      steps.step('downloading the simulator (once)...');
-      log?.show(true);
+      steps.step('finding the simulator...');
       let tenth = 0;
+      let shown = false;                        // the log opens when a download starts, not for a cached one
       const mb = (n: number) => (n / 1e6).toFixed(0);
-      tarball = await fetchRuntime(path.join(context!.globalStorageUri.fsPath, 'runtime'), version, plat!,
-        (got, total) => {
-          const f = total ? got / total : 0;
-          steps.update(`downloading the simulator (once): ${mb(got)}${total ? ` of ${mb(total)}` : ''} MB...`, f * DOWNLOAD_SHARE);
-          if (Math.floor(f * 10) > tenth) { tenth = Math.floor(f * 10); log?.appendLine(`[v5sim]   ${tenth * 10}%: ${mb(got)} MB`); }
-        }, line => log?.appendLine(line))
+      const got = await fetchRuntime(path.join(context!.globalStorageUri.fsPath, 'runtime'), version, plat!,
+        (bytes, total) => {
+          if (!shown) { shown = true; log?.show(true); }
+          const f = total ? bytes / total : 0;
+          steps.update(`downloading the simulator (once): ${mb(bytes)}${total ? ` of ${mb(total)}` : ''} MB...`, f * DOWNLOAD_SHARE);
+          if (Math.floor(f * 10) > tenth) { tenth = Math.floor(f * 10); log?.appendLine(`[v5sim]   ${tenth * 10}%: ${mb(bytes)} MB`); }
+        }, line => log?.appendLine(line), force)
         .catch((e: Error) => {
           throw new Error(`couldn't download the simulator (${e.message}). Check the internet connection, then V5 Sim: Repair Simulator`);
         });
-      log?.appendLine(`[v5sim] downloaded in ${steps.end()} s: ${tarball}`);
+      tarball = got.file;
+      key = installKey(version, got.tag);
+      log?.appendLine(`[v5sim] simulator from ${got.tag} ready in ${steps.end()} s: ${tarball}`);
       base = DOWNLOAD_SHARE;
     }
     // a Runner just for setup: no root yet
@@ -112,7 +116,7 @@ async function resolve(force: boolean): Promise<Runner | undefined> {
     log?.appendLine(`[v5sim] setting up the bundled simulator ${version}`);
     let logged = 0;                             // the last tenth logged
     const t0 = Date.now();
-    const r = await setup.shellLines(installScript(await setup.toUnix(tarball), version, force), line => {
+    const r = await setup.shellLines(installScript(await setup.toUnix(tarball), key, force), line => {
       tail.push(line);
       if (tail.length > 5) tail.shift();
       if (!unpack.feed(line)) { log?.appendLine(line); return; }

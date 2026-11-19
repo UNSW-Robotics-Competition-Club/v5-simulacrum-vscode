@@ -8,7 +8,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 
-import { Fs, Program, Project, describe, project, projectRoot, pythonVm } from './programs';
+import { FileProgram, Fs, Program, Project, describe, programForEditor, programForFile, project, projectRoot, pythonVm } from './programs';
 import { isWindows, onPath, sh, terminalEnv } from './runner';
 import { installUsbDriver } from './usbDriver';
 import { slotSetting } from './settings';
@@ -39,21 +39,23 @@ export function projectOf(file: string): Project | undefined {
 
 /** What a given file runs as: its project's program when the file is part of
  *  it (a hot/cold half, main.py), else the file itself. */
-export function programFor(file: string): { program?: Program; slot?: number; problem?: string } {
-  const proj = projectOf(file);
-  const base = path.basename(file).toLowerCase();
-  if (proj?.program && (proj.program.file === file || ('link' in proj.program && proj.program.link === file))) {
-    return { program: proj.program, slot: proj.slot };
+export function programFor(file: string): FileProgram {
+  const vm = /\.py$/i.test(file) && vexSdk ? pythonVm(vexSdk, undefined, diskFs) : undefined;
+  return programForFile(file, projectOf(file), vm);
+}
+
+/** The editor title bar's Run on Sim: VS Code passes the open file (often
+ *  a .cpp), so run that file's project, not the file; outside a project,
+ *  ask as the command palette does. */
+export async function runEditorProgram(sim: SimInstance, file?: string): Promise<void> {
+  const target = file ? programForEditor(projectOf(file)) : undefined;
+  if (!target) return runProgram(sim);
+  if (!target.program) {
+    void vscode.window.showWarningMessage(`Can't run this project on the simulator: ${target.problem}.`);
+    return;
   }
-  if (base === 'hot.package.bin' || base === 'cold.package.bin') {
-    return { problem: `${path.basename(file)} is half of a PROS hot/cold program: run its project's build` };
-  }
-  if (/\.py$/i.test(base)) {
-    const vm = vexSdk ? pythonVm(vexSdk, undefined, diskFs) : undefined;
-    return vm ? { program: { kind: 'python', file, link: vm }, slot: proj?.slot }
-      : { problem: "VEX's Python runtime isn't installed: open a V5 Python project with the VEXcode extension once" };
-  }
-  return { program: { kind: 'bin', file }, slot: proj?.slot };
+  const s = await pickSlot(target.slot);
+  if (s) await runOn(sim, target.program, s);
 }
 
 export async function runProgram(sim: SimInstance, given?: string): Promise<void> {

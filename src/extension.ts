@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 
 import { PortsPanel } from './panels/portsPanel';
 import { Page, WebPanel } from './panels/webPanel';
-import { initPrograms, programTerminal, runProgram } from './runProgram';
+import { initPrograms, programTerminal, runEditorProgram, runProgram } from './runProgram';
 import { initRunOnSim } from './runOnSim';
 import { quietWhenClosed } from './safeLog';
 import { initRuntime, simRunner } from './runtime';
@@ -79,6 +79,7 @@ export function activate(context: vscode.ExtensionContext): void {
     },
     'v5sim.installUsbDriver': () => installUsbDriver(),
     'v5sim.runProgram': (uri?: vscode.Uri) => runProgram(s, uri instanceof vscode.Uri ? uri.fsPath : undefined),
+    'v5sim.runEditorProgram': (uri?: vscode.Uri) => runEditorProgram(s, uri instanceof vscode.Uri ? uri.fsPath : vscode.window.activeTextEditor?.document.uri.fsPath),
     'v5sim.programTerminal': () => programTerminal(s),
     'v5sim.menu': async () => {
       const running = s.state === 'running';
