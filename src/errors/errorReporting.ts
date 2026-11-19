@@ -38,7 +38,7 @@ export function initErrorReporting(context: vscode.ExtensionContext, log: LogBuf
   const dsn = (process.env.V5SIM_SENTRY_DSN ?? SENTRY_DSN).trim();
   if (!dsn) return;
   const version = String(context.extension.packageJSON?.version ?? '0.0.0');
-  const scrub: ScrubOptions = { home: os.homedir(), user: userName(), extensionRoot: context.extensionPath };
+  const scrub: ScrubOptions = { home: os.homedir(), user: userName(), host: os.hostname(), extensionRoot: context.extensionPath };
   // loaded only now, and a failure only turns reporting off: the extension
   // must start whatever happens to the Sentry bundle
   let sentry: SentryReporter;
@@ -99,7 +99,7 @@ export function reportError(stage: Stage, error: unknown, opts: { withLog?: bool
   const data: Record<string, unknown> = { stage };
   if (e.stack && scrubOptions) data.stack = new vscode.TelemetryTrustedValue(scrubStack(e.stack, scrubOptions));
   if (opts.withLog && logBuffer) {
-    data.log = redact(logBuffer.text().split('\n').slice(-LOG_TAIL_LINES - 1).join('\n'), os.homedir(), userName());
+    data.log = redact(logBuffer.text().split('\n').slice(-LOG_TAIL_LINES - 1).join('\n'), os.homedir(), userName(), os.hostname());
   }
   try {
     logger.logError(e, data);

@@ -85,9 +85,11 @@ E2E_TOKEN=<token> node out/test/e2e/runE2E.js                               # in
 
 `src/errors/`: failures are sent to Sentry through `vscode.env.createTelemetryLogger`, so VS Code's telemetry level applies (errors at `error`/`all`), plus `v5sim.errorReporting`. The client is a standalone `@sentry/core` client (`src/errors/sentry.ts`): no `Sentry.init`, no global handlers, because the extension host is shared with other extensions. `scrub.ts` takes out the home folder, user name and computer name and rewrites stack frames (ours as `app:///out/src/...`, others as a bare file name). `reportError(stage, error)` at a failure point adds one; stages are tags and part of the grouping.
 
-Packages are built with `--no-dependencies`, so `vscode:prepublish` (run by `vsce package`) bundles `@sentry/core` into `out/src/errors/sentry.js` (`scripts/bundle-sentry.mjs`).
+Packages are built with `--no-dependencies`, so `vscode:prepublish` (run by `vsce package`) bundles `@sentry/core` into `out/src/errors/sentry.js` (`scripts/bundle-sentry.mjs`). CI checks each package with `scripts/check-vsix.mjs`: the bundled reporter must load and send without `node_modules`, or the build fails.
 
 The DSN is `SENTRY_DSN` in `src/errors/errorReporting.ts` (public by design; the club's Sentry project, EU region). Empty turns reporting off. `V5SIM_SENTRY_DSN` overrides it (tests). The Worker has the same DSN as its `SENTRY_DSN` secret, plus `LINK_KEY`.
+
+VS Code blanks every path in error telemetry, ours included, so `reportError` sends its own scrubbed stack as a `TelemetryTrustedValue`. Uncaught errors reach the logger from VS Code itself, without one: they arrive with VS Code's blanked stack (`<REDACTED: user-file-path>`), so catch and `reportError` anything worth a readable trace. That path has no test (the probe can't raise an uncaught error inside this extension).
 
 VS Code never sends extension telemetry during extension tests (and from an unbuilt VS Code), it only logs it to an "Extension Telemetry (Not Sent)" output, so `test/e2e/runErrorReports.ts` checks the real path by opening a downloaded VS Code with the extension and `test/e2e/probe` loaded and no test runner, against a fake Sentry:
 

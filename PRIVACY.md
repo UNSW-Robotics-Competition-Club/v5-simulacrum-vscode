@@ -24,7 +24,7 @@ When the simulator fails to set up or start, or the extension hits an error, a s
 - the extension, VS Code and OS versions, the processor type, whether VS Code runs remotely (for example in WSL), and whether the bundled simulator or a developer's copy is in use;
 - for a failed start, or the brain not reaching Windows USB, the last 40 lines of the V5 Sim log, with your home folder and user name taken out.
 
-It never contains your code, your computer's name or your user name.
+It never contains your code, your computer's name or your user name: these are taken out of the message and the log lines before anything is sent. Sentry is set not to store the IP address reports come from.
 
 Error reports follow VS Code's telemetry setting: they are sent when **Telemetry: Telemetry Level** (`telemetry.telemetryLevel`) is `all` or `error`, and never when it is `crash` or `off`. Setting `v5sim.errorReporting` to `false` turns them off for this extension only.
 

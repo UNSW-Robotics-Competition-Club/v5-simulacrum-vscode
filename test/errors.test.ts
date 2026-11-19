@@ -49,6 +49,17 @@ test('scrubEvent takes the home folder and user name out of every string', () =>
   assert.equal((e.extra as any).log, 'wsl: /home/<user>/.v5-simulacrum/runtime');
 });
 
+test('scrubEvent takes the computer name and bare user name out of messages and the log', () => {
+  const e = scrubEvent({ type: undefined,
+    extra: { log: 'kevin@KEVINS-LAPTOP:~$ v5brain.sh\nwsl: /home/jsmith/x: permission denied for kevin' },
+    exception: { values: [{ type: 'Error', value: 'usbip on KEVINS-LAPTOP failed for user kevin' }] } },
+  { ...opts, host: 'KEVINS-LAPTOP' });
+  const text = JSON.stringify(e);
+  assert.ok(!/kevin|jsmith/i.test(text), text);
+  assert.equal(e.exception!.values![0].value, 'usbip on <host> failed for user <user>');
+  assert.equal((e.extra as any).log, '<user>@<host>:~$ v5brain.sh\nwsl: /home/<user>/x: permission denied for <user>');
+});
+
 test('scrubEvent keeps our frames relative and others as a bare file name', () => {
   const frames = scrubEvent(event(), opts).exception!.values![0].stacktrace!.frames!;
   assert.deepEqual(frames.map(f => [f.filename, f.in_app]), [

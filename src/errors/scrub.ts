@@ -10,6 +10,8 @@ import { redact, redactValue } from '../feedback/report';
 export interface ScrubOptions {
   home: string;
   user: string;
+  /** The computer's name (os.hostname()). */
+  host?: string;
   /** The extension's folder: frames under it are ours. */
   extensionRoot: string;
 }
@@ -31,7 +33,7 @@ function frameFile(file: string, o: ScrubOptions): { name: string | undefined; o
 function scrubFrame(f: StackFrame, o: ScrubOptions): StackFrame {
   const { name, ours } = frameFile(f.filename ?? f.abs_path ?? '', o);
   return {
-    function: f.function ? redact(f.function, o.home, o.user) : f.function,
+    function: f.function ? redact(f.function, o.home, o.user, o.host) : f.function,
     filename: name,
     module: undefined,
     lineno: f.lineno,
@@ -50,13 +52,13 @@ export function scrubStack(stack: string, o: ScrubOptions): string {
     const m = /^\s*at (?:(.+?) \()?(.+?):(\d+):(\d+)\)?$/.exec(line);
     if (!m) {
       // frames without a file ("at new Promise (<anonymous>)") are kept if they hold no path
-      if (/^\s*at /.test(line) && !/[\\/]/.test(line)) frames.push(`    ${redact(line.trim(), o.home, o.user)}`);
+      if (/^\s*at /.test(line) && !/[\\/]/.test(line)) frames.push(`    ${redact(line.trim(), o.home, o.user, o.host)}`);
       continue;
     }
     const [, fn, file, lineNo, col] = m;
     const { name } = frameFile(file, o);
     const where = `${name ?? '<unknown>'}:${lineNo}:${col}`;
-    frames.push(fn ? `    at ${redact(fn, o.home, o.user)} (${where})` : `    at ${where}`);
+    frames.push(fn ? `    at ${redact(fn, o.home, o.user, o.host)} (${where})` : `    at ${where}`);
   }
   return frames.join('\n');
 }
@@ -99,7 +101,7 @@ export function scrubEvent(event: ErrorEvent, o: ScrubOptions): ErrorEvent {
     },
   };
   for (const k of Object.keys(kept) as (keyof ErrorEvent)[]) if (kept[k] === undefined) delete kept[k];
-  return redactValue(kept, o.home, o.user);
+  return redactValue(kept, o.home, o.user, o.host);
 }
 
 /** A message with what changes from run to run (paths, numbers, quoted

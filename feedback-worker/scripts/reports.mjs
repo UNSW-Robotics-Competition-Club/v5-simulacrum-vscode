@@ -55,6 +55,10 @@ async function deleteReports(args) {
     else { failed++; console.error(`${id}: ${res.status} ${clean(body.error)}`); }
   }
   rl?.close();
+  if (failed < ids.length) {
+    // the copy forwarded to Sentry isn't reachable from here
+    console.error('\nAlso delete the copy in Sentry: User Feedback, All Environments, search for each id as report:<id>.');
+  }
   if (failed) process.exit(1);
 }
 
