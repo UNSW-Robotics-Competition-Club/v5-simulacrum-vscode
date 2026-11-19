@@ -9,6 +9,7 @@ import { Issue, RobotConfig, options, parse, serialize, tokenize, validate } fro
 import { SimInstance } from '../simInstance';
 import { mode, simRunner } from '../runtime';
 import { cfg, presetFile, presetSetting } from '../settings';
+import { reportError } from '../errors/errorReporting';
 
 interface Preset { label: string; description: string; file: string }
 
@@ -45,8 +46,10 @@ export class PortsPanel {
                       readonly panel: vscode.WebviewPanel) {
     panel.webview.html = this.html();
     panel.onDidDispose(() => (PortsPanel.current = undefined));
-    panel.webview.onDidReceiveMessage(m => this.onMessage(m).catch(e =>
-      vscode.window.showErrorMessage(`V5 Ports: ${(e as Error).message}`)));
+    panel.webview.onDidReceiveMessage(m => this.onMessage(m).catch(e => {
+      reportError('ports', e);
+      return vscode.window.showErrorMessage(`V5 Ports: ${(e as Error).message}`);
+    }));
   }
 
   private load = (ref: string) => {

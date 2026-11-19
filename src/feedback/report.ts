@@ -57,6 +57,8 @@ export function redact(text: string, home: string, user: string): string {
     const u = escapeRe(user);
     out = out.replace(new RegExp(`([\\\\/](?:Users|home)[\\\\/])${u}(?=[\\\\/]|$|\\s)`, 'gi'), '$1<user>');
   }
+  // any Linux home: WSL's user name need not be the Windows one
+  out = out.replace(/(^|[\s'"`(=@:])\/home\/(?!<user>)[^/\s'"`)]+/g, '$1/home/<user>');
   return out;
 }
 

@@ -8,6 +8,7 @@ import * as path from 'node:path';
 import * as vscode from 'vscode';
 
 import { unzip } from '../zipRead';
+import { eventsOf } from './fakeSentry';
 
 const endpoint = process.env.E2E_ENDPOINT!;
 const token = process.env.E2E_TOKEN!;
@@ -19,15 +20,25 @@ function within<T>(p: Promise<T>, ms: number, what: string): Promise<T> {
   return Promise.race([p, new Promise<T>((_, rej) => setTimeout(() => rej(new Error(`timed out: ${what}`)), ms))]);
 }
 
+/** A module of the extension, the copy the extension itself loaded (on
+ *  Windows our path to it may differ in the drive letter's case, which
+ *  would load a second copy). */
+function extensionModule(extPath: string, ...rel: string[]): any {
+  const want = path.join(extPath, 'out', 'src', ...rel).toLowerCase();
+  const key = Object.keys(require.cache).find(k => k.toLowerCase() === want);
+  assert.ok(key, `${rel.join('/')} loaded by the extension`);
+  return require.cache[key]!.exports;
+}
+
+/** What the fake Sentry got. */
+async function sentryEvents(): Promise<any[]> {
+  return eventsOf(await (await fetch(`${process.env.E2E_SENTRY}/_events`)).json() as string[]);
+}
+
 /** The open panel, with what it posts to the webview recorded. */
 async function openPanel(extPath: string) {
   await vscode.commands.executeCommand('v5sim.reportIssue');
-  // the module the extension loaded (on Windows its path may differ from
-  // ours in the drive letter's case, which would load a second copy)
-  const want = path.join(extPath, 'out', 'src', 'feedback', 'feedbackPanel.js').toLowerCase();
-  const key = Object.keys(require.cache).find(k => k.toLowerCase() === want);
-  assert.ok(key, 'feedbackPanel module loaded by the extension');
-  const { FeedbackPanel } = require.cache[key]!.exports;
+  const { FeedbackPanel } = extensionModule(extPath, 'feedback', 'feedbackPanel.js');
   const panel = FeedbackPanel.current;
   assert.ok(panel, 'the command opened the panel');
   const posted: Msg[] = [];
@@ -163,5 +174,19 @@ export async function run(): Promise<void> {
     (vscode.env as any).openExternal = realOpen;
     (vscode.commands as any).executeCommand = realExec;
   }
+  await errorReports(ext.extensionPath);
   console.log('E2E OK', id, id2);
+}
+
+/** 4. error reports in a test run: VS Code only logs extension telemetry
+ *  during extension tests, so nothing may arrive (runErrorReports.ts checks
+ *  the real path), and reporting must never throw. */
+async function errorReports(extPath: string): Promise<void> {
+  await vscode.workspace.getConfiguration('telemetry').update('telemetryLevel', 'all', vscode.ConfigurationTarget.Global);
+  const { reportError } = extensionModule(extPath, 'errors', 'errorReporting.js');
+  assert.doesNotThrow(() => reportError('start', 'e2e: in a test run', { withLog: true }));
+  assert.doesNotThrow(() => reportError('setup', new Error('e2e: in a test run')));
+  await new Promise(r => setTimeout(r, 3000));
+  assert.deepEqual(await sentryEvents(), [], 'VS Code sends no extension telemetry from a test run');
+  console.log('error reports OK (none sent in a test run)');
 }

@@ -78,6 +78,30 @@ V5SIM_FEEDBACK_TOKEN=<token> node test/feedback-worker.integration.mjs     # mod
 E2E_TOKEN=<token> node out/test/e2e/runE2E.js                               # in a downloaded VS Code (E2E_VSCODE=1.85.0 for the oldest)
 ```
 
+## Error reports (Sentry)
+
+`src/errors/`: failures are sent to Sentry through `vscode.env.createTelemetryLogger`, so VS Code's telemetry level applies (errors at `error`/`all`), plus `v5sim.errorReporting`. The client is a standalone `@sentry/core` client (`src/errors/sentry.ts`): no `Sentry.init`, no global handlers, because the extension host is shared with other extensions. `scrub.ts` takes out the home folder, user name and computer name and rewrites stack frames (ours as `app:///out/src/...`, others as a bare file name). `reportError(stage, error)` at a failure point adds one; stages are tags and part of the grouping.
+
+Packages are built with `--no-dependencies`, so `vscode:prepublish` (run by `vsce package`) bundles `@sentry/core` into `out/src/errors/sentry.js` (`scripts/bundle-sentry.mjs`).
+
+Turning it on: put the Sentry project's DSN in `SENTRY_DSN` in `src/errors/errorReporting.ts` (it is public by design). Empty means off. `V5SIM_SENTRY_DSN` overrides it (tests).
+
+VS Code never sends extension telemetry during extension tests (and from an unbuilt VS Code), it only logs it to an "Extension Telemetry (Not Sent)" output, so `test/e2e/runErrorReports.ts` checks the real path by opening a downloaded VS Code with the extension and `test/e2e/probe` loaded and no test runner, against a fake Sentry:
+
+```sh
+npx tsc -p . && npm run vscode:prepublish && node out/test/e2e/runErrorReports.js   # E2E_VSCODE=1.85.0 for the oldest
+```
+
+**Reports in Sentry too.** With the Worker secret `SENTRY_DSN` set (the same DSN works), each Report a Problem submission also appears under Sentry's **User Feedback** with its summary, description, kind, contact and environment, tagged with the report id. The files stay in R2: with the secret `LINK_KEY` set, the feedback has signed download links (`/d/<day>/<uuid>/<file>?sig=`) to `report.json` and `bundle.zip`. The links expire after 60 days (then use `/admin`); anyone who can see the feedback in Sentry can use them until then, and changing `LINK_KEY` revokes them all.
+
+```sh
+cd feedback-worker
+npx wrangler secret put SENTRY_DSN
+npx wrangler secret put LINK_KEY        # any long random string
+```
+
+The Worker integration test checks the forwarding and the links against a fake Sentry when the Worker's `SENTRY_DSN` is `http://fbkey@127.0.0.1:8798/7` (in `.dev.vars`, with `LINK_KEY`): `V5SIM_FAKE_SENTRY_PORT=8798 ... node test/feedback-worker.integration.mjs`.
+
 ## Source
 
 | file | |
@@ -94,5 +118,6 @@ E2E_TOKEN=<token> node out/test/e2e/runE2E.js                               # in
 | `src/panels/portsPanel.ts`, `media/ports.*` | the port map editor |
 | `src/safeLog.ts`, `src/outputBudget.ts` | output channel that can't throw; rate limit for simulator output |
 | `src/feedback/`, `media/feedback.*` | Report a Problem: form, project scan, zip, upload, GitHub fallback |
-| `feedback-worker/` | the reports endpoint (Cloudflare Worker + R2) |
+| `src/errors/`, `scripts/bundle-sentry.mjs` | automatic error reports to Sentry |
+| `feedback-worker/` | the reports endpoint (Cloudflare Worker + R2), forwarding to Sentry User Feedback |
 | `media/icon.svg` | the extension icon (rendered to `media/icon.png`, 256×256) |

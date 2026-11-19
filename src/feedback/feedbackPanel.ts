@@ -17,6 +17,7 @@ import { ProjectScan, scanProject } from './projectFiles';
 import { FeedbackForm, Report, buildReport, bundleEntries, githubIssueUrl, readForm, redact, redactValue } from './report';
 import { SubmitError, submitReport } from './submit';
 import { zip } from './zip';
+import { reportError } from '../errors/errorReporting';
 
 const ISSUES_REPO = 'https://github.com/UNSW-Robotics-Competition-Club/v5-simulacrum-vscode';
 
@@ -58,6 +59,7 @@ export class FeedbackPanel {
     panel.webview.html = this.html();
     panel.onDidDispose(() => (FeedbackPanel.current = undefined));
     panel.webview.onDidReceiveMessage(m => this.onMessage(m).catch(e => {
+      reportError('feedback', e);
       this.busy = false;
       this.post({ type: 'error', message: (e as Error).message });
     }));

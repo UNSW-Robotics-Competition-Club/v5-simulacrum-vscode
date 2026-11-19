@@ -138,6 +138,11 @@ test('redact takes out the home folder and user name in every spelling', () => {
   assert.equal(redact('C:\\Users\\kevin\\proj\\main.cpp', winHome, 'kevin'), '~\\proj\\main.cpp');
   assert.equal(redact('c:/users/KEVIN/proj', winHome, 'kevin'), '~/proj');
   assert.equal(redact('wsl: /home/kevin/.v5-simulacrum', winHome, 'kevin'), 'wsl: /home/<user>/.v5-simulacrum');
+  // WSL's user need not be the Windows one
+  assert.equal(redact('> v5brain.sh --robot @/home/jsmith/robot.args', winHome, 's123456'),
+    '> v5brain.sh --robot @/home/<user>/robot.args');
+  assert.equal(redact('cd /home/jsmith && ls "/home/jsmith/x"', winHome, 'x'), 'cd /home/<user> && ls "/home/<user>/x"');
+  assert.equal(redact('see project/home/notes.txt', winHome, 'x'), 'see project/home/notes.txt');
   assert.equal(redact('/Users/kevin/x and /Users/kevinb/y', '/Users/kevin', 'kevin'), '~/x and /Users/kevinb/y');
   assert.equal(redact('kevin wrote this', winHome, 'kevin'), 'kevin wrote this');
   assert.deepEqual(redactValue({ a: ['C:\\Users\\kevin\\a'], n: 1, b: null }, winHome, 'kevin'),

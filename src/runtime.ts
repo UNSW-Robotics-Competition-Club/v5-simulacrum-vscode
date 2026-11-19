@@ -13,6 +13,7 @@ import { Runner, isWindows } from './runner';
 import { repoPath, wslDistro } from './settings';
 
 import { DATA_DIR, Mode, UnpackProgress, bundledEnv, chooseMode, installScript, parseInstallOutput, parseWslList } from './runtimeCore';
+import { reportError } from './errors/errorReporting';
 export { DATA_DIR };
 
 // ------------------------------------------------------------------ state
@@ -51,6 +52,7 @@ export function simRunner(force = false): Promise<Runner | undefined> {
     }, e => {
       if (ready === p) ready = undefined;
       vscode.window.showErrorMessage(`V5 simulator: ${(e as Error).message}`);
+      reportError('setup', e);
       log?.appendLine(`[v5sim] ${(e as Error).stack ?? e}`);
       return undefined;
     });

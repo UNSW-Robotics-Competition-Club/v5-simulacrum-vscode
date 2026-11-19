@@ -12,5 +12,6 @@
   ]
   // R2 lifecycle: reports/ objects expire after 180 days
   //   npx wrangler r2 bucket lifecycle add v5sim-feedback-reports expire-reports reports/ --expire-days 180
-  // secret: ADMIN_TOKEN (wrangler secret put ADMIN_TOKEN)
+  // secrets (wrangler secret put): ADMIN_TOKEN; optional SENTRY_DSN (forward reports to Sentry User Feedback)
+  // and LINK_KEY (signed download links in that feedback)
 }

@@ -3,6 +3,7 @@
 ## Unreleased
 
 - **Report a Problem** (V5 Sim menu, sidebar, Command Palette): a form for a bug, idea or question that goes straight to the maintainers, no GitHub account needed. Optionally attaches the V5 Sim log and your setup (home folder and user name taken out) and your project folder (listed before sending; build output, Git data and possible secrets left out). Offline, it saves a zip and opens a prefilled GitHub issue instead.
+- **Automatic error reports**: a failed setup or start, and the extension's own errors, are reported to the maintainers (error, versions, OS, and for a failed start the last lines of the log; no code, home folder and user name taken out). Follows VS Code's telemetry setting; `v5sim.errorReporting` turns it off.
 
 ## 0.3.12 (beta)
 

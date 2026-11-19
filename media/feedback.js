@@ -126,7 +126,7 @@
         if (typeof s.includeLog === 'boolean') includeLog.checked = s.includeLog;
         if (typeof s.includeProject === 'boolean') includeProject.checked = s.includeProject;
         where.textContent = endpoint
-          ? `Sent privately to ${endpoint}.`
+          ? `Sent privately to the maintainers (${endpoint}). Your summary, details and contact also appear in their issue tracker, Sentry; your files stay on their server.`
           : 'No feedback server is set (v5sim.feedbackEndpoint): the report is saved as a zip for you to attach to a GitHub issue, which is public.';
         send.textContent = endpoint ? 'Send report' : 'Save report & open GitHub';
         projectChanged();
