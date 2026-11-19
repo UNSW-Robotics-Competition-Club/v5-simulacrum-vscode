@@ -1,0 +1,19 @@
+{
+  "name": "v5sim-feedback-worker",
+  "version": "1.0.0",
+  "description": "Feedback intake for the V5 Brain Simulator extension (Cloudflare Worker + R2)",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "check": "tsc -p .",
+    "reports": "node scripts/reports.mjs"
+  },
+  "license": "LGPL-3.0-or-later",
+  "type": "module",
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261119.1",
+    "typescript": "^7.0.2",
+    "wrangler": "^4.165.0"
+  },
+  "private": true
+}

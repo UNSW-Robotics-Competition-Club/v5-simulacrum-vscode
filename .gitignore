@@ -8,3 +8,4 @@ simsrc/
 out-runtime/
 .gstack/
 __pycache__/
+.vscode-test/

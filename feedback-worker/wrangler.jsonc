@@ -1,0 +1,16 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "v5sim-feedback",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-11-01",
+  "account_id": "cd49e919e5746d27cfb538f55719bc45",
+  "observability": { "enabled": true },
+  "r2_buckets": [{ "binding": "REPORTS", "bucket_name": "v5sim-feedback-reports" }],
+  "ratelimits": [
+    { "name": "LIMITER", "namespace_id": "5301", "simple": { "limit": 5, "period": 60 } },
+    { "name": "GLOBAL_LIMITER", "namespace_id": "5302", "simple": { "limit": 30, "period": 60 } }
+  ]
+  // R2 lifecycle: reports/ objects expire after 180 days
+  //   npx wrangler r2 bucket lifecycle add v5sim-feedback-reports expire-reports reports/ --expire-days 180
+  // secret: ADMIN_TOKEN (wrangler secret put ADMIN_TOKEN)
+}

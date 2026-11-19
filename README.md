@@ -62,6 +62,7 @@ Everything else (the emulator, Python, the robot simulator) comes inside the ext
 | `v5sim.wslDistro` | `Ubuntu-24.04` | Windows: the WSL distribution |
 | `v5sim.instanceId` | `auto` | Which simulator instance; instance N serves its pages on port 8765+N |
 | `v5sim.openBrainOnStart` | `true` | Open the brain screen when the simulator starts |
+| `v5sim.feedbackEndpoint` | the maintainers' server | Where **Report a Problem** sends reports; empty: save a zip and open a GitHub issue instead |
 | `v5sim.repoPath` | | A simulator checkout to use instead of the bundled one (for simulator development) |
 
 ## Troubleshooting
@@ -78,7 +79,13 @@ Everything else (the emulator, Python, the robot simulator) comes inside the ext
 
 ## Feedback
 
-Issues and suggestions: [GitHub issues](https://github.com/UNSW-Robotics-Competition-Club/v5-simulacrum-vscode/issues). Building the extension or working on the simulator: see [DEVELOPMENT.md](DEVELOPMENT.md).
+**V5 Sim: Report a Problem** (also in the V5 Sim menu and sidebar) sends a bug report, idea or question to the maintainers; no GitHub account needed. You choose what goes with it:
+- **The V5 Sim log and your setup** (on by default): versions, OS, your `v5sim.*` settings. Your home folder and user name are taken out.
+- **Your project folder** (off by default): its source files, listed before you send. Build output, `.git`, dependencies, and files that may hold passwords or keys (`.env`, `*.pem`, `.vscode/settings.json`…) are left out; at most 10 MB.
+
+Reports are stored privately for the maintainers. If the report can't be sent (offline, or `v5sim.feedbackEndpoint` emptied), it's saved as a zip and a prefilled GitHub issue opens for you to attach it.
+
+Or directly: [GitHub issues](https://github.com/UNSW-Robotics-Competition-Club/v5-simulacrum-vscode/issues). Building the extension or working on the simulator: see [DEVELOPMENT.md](DEVELOPMENT.md).
 
 ## License
 
