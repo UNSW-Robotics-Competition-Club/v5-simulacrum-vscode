@@ -27,7 +27,7 @@ const LOG_TAIL_LINES = 40;
 const FLUSH_TIMEOUT_MS = 2_000;
 
 /** Where a failure happened; a Sentry tag and part of its grouping. */
-export type Stage = 'setup' | 'start' | 'usb-attach' | 'wsl-interop' | 'usb-driver' | 'ports' | 'feedback'
+export type Stage = 'setup' | 'start' | 'usb-attach' | 'wsl-interop' | 'usb-driver' | 'ports' | 'feedback' | 'run-on-sim'
   | 'unhandled';
 
 let logger: vscode.TelemetryLogger | undefined;
@@ -117,4 +117,15 @@ function trusted(v: unknown): string | undefined {
 
 function userName(): string {
   try { return os.userInfo().username; } catch { return process.env.USERNAME ?? process.env.USER ?? ''; }
+}
+
+/** Runs a user action, reporting and showing any failure it doesn't handle
+ *  itself (instead of an uncaught error with VS Code's blanked stack). */
+export async function reporting(stage: Stage, what: string, action: () => Promise<unknown>): Promise<void> {
+  try {
+    await action();
+  } catch (e) {
+    reportError(stage, e);
+    void vscode.window.showErrorMessage(`${what}: ${(e as Error).message ?? e}`);
+  }
 }

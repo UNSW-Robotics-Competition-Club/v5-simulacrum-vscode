@@ -28,8 +28,9 @@ export type State = 'stopped' | 'starting' | 'running' | 'stopping';
 
 export type { Running };
 
-/** A program to install and run for this start only (not saved to settings). */
-export interface RunOnce { program: string; slot: number }
+/** A program to install and run for this start only (not saved to settings);
+ *  link: what it is linked to (a PROS cold package, VEX's Python VM). */
+export interface RunOnce { program: string; slot: number; link?: string }
 
 export class SimInstance implements vscode.Disposable {
   state: State = 'stopped';
@@ -87,6 +88,10 @@ export class SimInstance implements vscode.Disposable {
         if (!fs.existsSync(program)) throw new Error(`no such program: ${program}`);
         const slot = once?.slot ?? slotSetting();
         args.push('--run', await runner.stage(program), '--slot', String(slot));
+        if (once?.link) {
+          if (!fs.existsSync(once.link)) throw new Error(`no such file: ${once.link}`);
+          args.push('--link', await runner.stage(once.link));
+        }
       }
       this.log.appendLine(`> v5brain.sh ${args.join(' ')}`);
       const proc = await runner.spawnScript('v5brain.sh', args);

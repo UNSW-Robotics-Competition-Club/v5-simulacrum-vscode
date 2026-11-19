@@ -4,13 +4,14 @@ import { FeedbackPanel } from './feedback/feedbackPanel';
 import { LogBuffer, teeLog } from './feedback/logBuffer';
 import { PortsPanel } from './panels/portsPanel';
 import { Page, WebPanel } from './panels/webPanel';
-import { programTerminal, runProgram } from './runProgram';
+import { initPrograms, programTerminal, runEditorProgram, runProgram } from './runProgram';
+import { initRunOnSim } from './runOnSim';
 import { quietWhenClosed } from './safeLog';
 import { initRuntime, simRunner } from './runtime';
 import { cfg } from './settings';
 import { SimInstance } from './simInstance';
 import { initUsbDriver, installUsbDriver } from './usbDriver';
-import { initErrorReporting } from './errors/errorReporting';
+import { initErrorReporting, reporting } from './errors/errorReporting';
 
 let sim: SimInstance | undefined;
 
@@ -84,7 +85,10 @@ export function activate(context: vscode.ExtensionContext): void {
       if (await simRunner(true)) vscode.window.showInformationMessage('The V5 simulator is set up.');
     },
     'v5sim.installUsbDriver': () => installUsbDriver(),
-    'v5sim.runProgram': (uri?: vscode.Uri) => runProgram(s, uri instanceof vscode.Uri ? uri.fsPath : undefined),
+    'v5sim.runProgram': (uri?: vscode.Uri) => reporting('run-on-sim', "Couldn't run the program on the simulator",
+      () => runProgram(s, uri instanceof vscode.Uri ? uri.fsPath : undefined)),
+    'v5sim.runEditorProgram': (uri?: vscode.Uri) => reporting('run-on-sim', "Couldn't run the project on the simulator",
+      () => runEditorProgram(s, uri instanceof vscode.Uri ? uri.fsPath : vscode.window.activeTextEditor?.document.uri.fsPath)),
     'v5sim.programTerminal': () => programTerminal(s),
     'v5sim.menu': async () => {
       const running = s.state === 'running';
@@ -111,6 +115,8 @@ export function activate(context: vscode.ExtensionContext): void {
     context.subscriptions.push(vscode.commands.registerCommand(id, fn));
   }
   context.subscriptions.push(log, status, s);
+  initPrograms(context);
+  initRunOnSim(context, s, log);
 
   // the activity-bar view: its welcome content holds the buttons
   context.subscriptions.push(vscode.window.registerTreeDataProvider('v5sim.home', {

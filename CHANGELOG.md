@@ -1,9 +1,12 @@
 # Changelog
 
-## Unreleased
+## 0.3.13 (beta)
 
 - **Report a Problem** (V5 Sim menu, sidebar, Command Palette): a form for a bug, idea or question that goes straight to the maintainers, no GitHub account needed. Optionally attaches the V5 Sim log and your setup (home folder and user name taken out) and your project folder (listed before sending; build output, Git data and possible secrets left out). Offline, it saves a zip and opens a prefilled GitHub issue instead.
 - **Automatic error reports**: a failed setup or start, and the extension's own errors, are reported to the maintainers (error, versions, OS, and for a failed start the last lines of the log; no code, home folder and user name taken out). Follows VS Code's telemetry setting; `v5sim.errorReporting` turns it off.
+- **PROS hot/cold and VEXcode Python run on the simulator** (all platforms): Run Program on Sim and the build offer run what the project's own tools would download: a PROS project's hot/cold pair (the default PROS build, newer than its monolith) or monolith, a VEXcode C++ build, or a VEXcode Python `main.py` with VEX's Python runtime from the VEXcode extension. The simulator installs them linked, as PROS and VEXcode upload them (needs the simulator's `--link`, bundled from this version). A project's own slot (VEXcode's) is used.
+- **Run on Sim is easy to find on a Mac**, where VEXcode's Download button can't see the simulator: after a build, the extension offers to run the new program on the simulated brain (or always does, with `v5sim.runOnBuild`); a **▶ Run on Sim** button in the status bar and in VEXcode projects' editor title bar; and a one-time tip saying so. The build offer also appears on Windows without the USB driver.
+- **No more "Where is your v5-simulacrum checkout?"**: a package without the simulator inside (the platform-neutral one) downloads the simulator for your computer from the extension's GitHub release (checked against its SHA256SUMS, with progress, once), instead of asking for a developer checkout. A checkout next to the workspace, or `v5sim.repoPath`, is still used when there is one.
 
 ## 0.3.12 (beta)
 
