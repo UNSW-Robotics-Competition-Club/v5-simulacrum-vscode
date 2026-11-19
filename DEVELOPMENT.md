@@ -55,6 +55,29 @@ The extension stops a simulator only through `scripts/v5fleet.sh stop <id>`: det
 - Instance N's serial ports are in `/tmp/v5simN/`.
 - VS Code started from the Dock doesn't get your shell's PATH; the extension adds Homebrew's folders (`/opt/homebrew/bin`, `/usr/local/bin`) for the simulator's scripts and its terminals.
 
+## Feedback reports
+
+**V5 Sim: Report a Problem** (`src/feedback/`, `media/feedback.*`) POSTs `multipart/form-data` (`report` JSON + optional `bundle` zip with `report.json`, `log.txt`, `project/…`, `project-skipped.txt`) to `v5sim.feedbackEndpoint`, default `https://v5sim-feedback.unsw-rcc.workers.dev`. On failure, or with the setting empty, it saves the zip and opens a prefilled GitHub issue.
+
+The endpoint is `feedback-worker/`, a Cloudflare Worker on the **UNSW RCC** account: rate-limited (5 a minute per address), 25 MB per request, reports in the R2 bucket `v5sim-feedback-reports` under `reports/<day>/<uuid>/`. Deploy with `cd feedback-worker && npm ci && npx wrangler deploy`; the admin token is the Worker secret `ADMIN_TOKEN` (`npx wrangler secret put ADMIN_TOKEN`).
+
+Reading reports:
+
+```sh
+cd feedback-worker
+V5SIM_FEEDBACK_TOKEN=<ADMIN_TOKEN> npm run reports -- list [yyyy-mm-dd]
+V5SIM_FEEDBACK_TOKEN=<ADMIN_TOKEN> npm run reports -- get <yyyy-mm-dd/uuid> [out-dir]
+```
+
+Bundles contain students' code: open them as untrusted input and don't publish them.
+
+Tests beyond `npm test` (they need a Worker, `npx wrangler dev --port 8799` with `ADMIN_TOKEN` in `feedback-worker/.dev.vars`):
+
+```sh
+V5SIM_FEEDBACK_TOKEN=<token> node test/feedback-worker.integration.mjs     # modules -> Worker -> R2
+E2E_TOKEN=<token> node out/test/e2e/runE2E.js                               # in a downloaded VS Code (E2E_VSCODE=1.85.0 for the oldest)
+```
+
 ## Source
 
 | file | |
@@ -70,4 +93,6 @@ The extension stops a simulator only through `scripts/v5fleet.sh stop <id>`: det
 | `src/panels/webPanel.ts` | the brain / devices / field / controller panes (iframes on `localhost:8765+N`) |
 | `src/panels/portsPanel.ts`, `media/ports.*` | the port map editor |
 | `src/safeLog.ts`, `src/outputBudget.ts` | output channel that can't throw; rate limit for simulator output |
+| `src/feedback/`, `media/feedback.*` | Report a Problem: form, project scan, zip, upload, GitHub fallback |
+| `feedback-worker/` | the reports endpoint (Cloudflare Worker + R2) |
 | `media/icon.svg` | the extension icon (rendered to `media/icon.png`, 256×256) |

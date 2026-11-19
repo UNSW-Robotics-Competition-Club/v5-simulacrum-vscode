@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Report a Problem** (V5 Sim menu, sidebar, Command Palette): a form for a bug, idea or question that goes straight to the maintainers, no GitHub account needed. Optionally attaches the V5 Sim log and your setup (home folder and user name taken out) and your project folder (listed before sending; build output, Git data and possible secrets left out). Offline, it saves a zip and opens a prefilled GitHub issue instead.
+
 ## 0.3.12 (beta)
 
 - **Setting up shows its progress**: the first start after installing or updating says how many of the simulator's files are unpacked and for how long, with a progress bar, and writes the same to the V5 Sim output (shown while it unpacks). VEXos's check shows its time too.
