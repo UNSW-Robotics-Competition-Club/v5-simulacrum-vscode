@@ -47,7 +47,12 @@ export class WebPanel {
   private loads = 0;                 // a newer load() supersedes a waiting one
 
   private constructor(readonly page: Page, readonly panel: vscode.WebviewPanel) {
-    panel.onDidDispose(() => WebPanel.panels.delete(page));
+    panel.onDidDispose(() => {
+      // a load awaiting the page must not touch the disposed webview: a
+      // newer load count makes it (and waitForPage's polling) stop
+      this.loads++;
+      if (WebPanel.panels.get(page) === this) WebPanel.panels.delete(page);
+    });
     panel.webview.onDidReceiveMessage(m => {
       // the only command a pane's buttons run (never one named by the page)
       if (m?.type === 'command') void vscode.commands.executeCommand('v5sim.start');
@@ -76,6 +81,7 @@ export class WebPanel {
       return;
     }
     const uri = await vscode.env.asExternalUri(viewUrl(target.viewPort, this.page));
+    if (load !== this.loads) return;   // superseded, or the pane was closed
     const url = uri.toString(true);
     this.panel.title = `${TITLES[this.page]} (${target.id})`;
     if (url === this.shown) return;
