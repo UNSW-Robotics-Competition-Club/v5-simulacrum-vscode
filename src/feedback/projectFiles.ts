@@ -95,3 +95,29 @@ export async function scanProject(root: string, limits = LIMITS): Promise<Projec
   if (stopped) skipped.push({ rel: `(the rest of the folder: ${stopped})`, reason: 'limit reached' });
   return { root, files, skipped, totalBytes };
 }
+
+export interface ReadFile { rel: string; data: Buffer }
+export interface ProjectRead { files: ReadFile[]; skipped: Skipped[] }
+
+/** The scanned files' contents, read when the report is sent. A file
+ *  deleted or grown past the limits since the scan is left out (and listed
+ *  as skipped), not a failed report. */
+export async function readProjectFiles(scan: ProjectScan, limits = LIMITS): Promise<ProjectRead> {
+  const files: ReadFile[] = [];
+  const skipped: Skipped[] = [...scan.skipped];
+  let total = 0;
+  for (const f of scan.files) {
+    let data: Buffer;
+    try {
+      data = await fs.promises.readFile(f.abs);
+    } catch {
+      skipped.push({ rel: f.rel, reason: 'unreadable' });
+      continue;
+    }
+    if (data.length > limits.fileBytes) { skipped.push({ rel: f.rel, reason: 'too large' }); continue; }
+    if (total + data.length > limits.totalBytes) { skipped.push({ rel: f.rel, reason: 'limit reached' }); continue; }
+    files.push({ rel: f.rel, data });
+    total += data.length;
+  }
+  return { files, skipped };
+}

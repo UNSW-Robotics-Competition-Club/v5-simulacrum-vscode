@@ -12,7 +12,7 @@ import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 const out = path.join(path.dirname(new URL(import.meta.url).pathname.replace(/^\/(\w:)/, '$1')), '..', 'out', 'src', 'feedback');
 const { zip } = require(path.join(out, 'zip.js'));
-const { scanProject } = require(path.join(out, 'projectFiles.js'));
+const { readProjectFiles, scanProject } = require(path.join(out, 'projectFiles.js'));
 const { buildReport, bundleEntries } = require(path.join(out, 'report.js'));
 const { submitReport, SubmitError } = require(path.join(out, 'submit.js'));
 
@@ -39,7 +39,7 @@ const form = { kind: 'bug', summary: '[integration test] brain screen black', de
   includeLog: true, includeProject: true };
 const report = buildReport(form, { extension: 'test', platform: process.platform });
 const scan = await scanProject(root);
-const bundle = zip(bundleEntries(report, 'log line\n', scan, abs => fs.readFileSync(abs)));
+const bundle = zip(bundleEntries(report, 'log line\n', await readProjectFiles(scan)));
 
 const { id } = await submitReport(base, report, bundle, 'v5sim-vscode/integration');
 assert.match(id, /^\d{4}-\d{2}-\d{2}\/[0-9a-f-]{36}$/);
@@ -89,6 +89,14 @@ if (sentry) {
   sentry.close();
   console.log('sentry feedback and signed links ok');
 }
+
+// any language: the summary is also R2 metadata, which must take it
+const intl = { ...report, summary: '[integration test] 机器人不动 – ünïcødé 🤖' };
+const { id: intlId } = await submitReport(base, intl, bundle, 'v5sim-vscode/integration');
+const intlListed = await (await admin(`?day=${intlId.slice(0, 10)}`)).json();
+assert.equal(intlListed.reports.find(r => r.id === intlId)?.summary, intl.summary, 'non-ASCII summary listed intact');
+assert.equal((await (await admin(`/${intlId}/report.json`)).json()).summary, intl.summary);
+console.log('non-ASCII summary ok');
 
 // refusals. Every POST counts toward the rate limit (5 a minute), so a 429
 // here means wait for the next minute and ask again.

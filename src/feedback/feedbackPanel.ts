@@ -13,7 +13,7 @@ import { mode } from '../runtime';
 import { cfg } from '../settings';
 import { SimInstance } from '../simInstance';
 import { LogBuffer } from './logBuffer';
-import { ProjectScan, scanProject } from './projectFiles';
+import { ProjectRead, ProjectScan, readProjectFiles, scanProject } from './projectFiles';
 import { FeedbackForm, Report, buildReport, bundleEntries, githubIssueUrl, readForm, redact, redactValue } from './report';
 import { SubmitError, submitReport } from './submit';
 import { zip } from './zip';
@@ -28,6 +28,9 @@ export interface FeedbackDeps {
 }
 
 /** What the webview shows of a project scan. */
+/** A report's contents, collected once and zipped for sending or saving. */
+interface Parts { report: Report; log: string | undefined; project: ProjectRead | undefined }
+
 interface ScanView { folder: string; files: { rel: string; size: number }[]; skipped: { rel: string; reason: string }[];
   totalBytes: number }
 
@@ -136,7 +139,9 @@ export class FeedbackPanel {
     this.busy = true;                // until the end, dialogs included: no second report
     try {
       this.post({ type: 'progress', message: 'Packing the report…' });
-      const { report, bundle } = await this.pack(form);
+      const parts = await this.collect(form);
+      const { report } = parts;
+      const bundle = zip(bundleEntries(parts.report, parts.log, parts.project));
       const url = endpoint();
       let failure = 'No feedback server is set (v5sim.feedbackEndpoint).';
       while (url) {
@@ -150,42 +155,52 @@ export class FeedbackPanel {
           failure = e instanceof SubmitError ? e.message : (e as Error).message;
         }
         this.post({ type: 'progress', message: `Couldn't send: ${failure}` });
+        // modal: a toast can go unseen (Do Not Disturb), leaving the form disabled
         const pick = await vscode.window.showWarningMessage(
           `${failure} Try again, or save the report as a zip and attach it to a GitHub issue? (GitHub issues are public.)`,
-          'Try Again', 'Save for GitHub');
+          { modal: true }, 'Try Again', 'Save for GitHub');
         if (pick === 'Try Again') continue;
         if (pick !== 'Save for GitHub') { this.post({ type: 'error', message: failure }); return; }
-        await this.saveAndOpenIssue(form, failure, true);
+        await this.saveAndOpenIssue(form, parts, failure, true);
         return;
       }
-      await this.saveAndOpenIssue(form, failure, false);
+      await this.saveAndOpenIssue(form, parts, failure, false);
     } finally {
       this.busy = false;
     }
   }
 
-  /** Report and zip; home folder and user name taken out of the log and
-   *  environment (project files are sent as they are). */
-  private async pack(form: FeedbackForm): Promise<{ report: Report; bundle: Buffer }> {
+  /** What goes in the report, read once: home folder and user name taken
+   *  out of the log and environment (project files are sent as they are).
+   *  The folder is scanned again now, so the files sent are the files as
+   *  they are, and the form's list is brought up to date. */
+  private async collect(form: FeedbackForm): Promise<Parts> {
     const home = os.homedir();
     const user = safeUserName();
-    const environment = redactValue(collectEnvironment(this.deps), home, user);
+    const host = os.hostname();
+    const environment = redactValue(collectEnvironment(this.deps), home, user, host);
     const report = buildReport(form, environment);
-    const log = form.includeLog ? redact(this.deps.log.text(), home, user) : undefined;
-    const project = form.includeProject ? await this.scanFolder() : undefined;
-    const entries = bundleEntries(report, log, project, abs => fs.readFileSync(abs));
-    return { report, bundle: zip(entries) };
+    const log = form.includeLog ? redact(this.deps.log.text(), home, user, host) : undefined;
+    let project: ProjectRead | undefined;
+    if (form.includeProject) {
+      this.scan = undefined;
+      const scan = await this.scanFolder();
+      await this.postScan();
+      if (scan) project = await readProjectFiles(scan);
+    }
+    return { report, log, project };
   }
 
   /** The fallback: a zip for a public GitHub issue, so without the contact
    *  the user gave for a private reply. */
-  private async saveAndOpenIssue(form: FeedbackForm, why: string, agreed: boolean): Promise<void> {
+  private async saveAndOpenIssue(form: FeedbackForm, parts: Parts, why: string, agreed: boolean): Promise<void> {
     const pick = agreed ? 'Save & Open GitHub' : await vscode.window.showWarningMessage(
       `${why} The report will be saved as a zip for you to attach to a GitHub issue. GitHub issues are public: ` +
       'anyone can see the description' + (form.includeProject ? " and your project's code" : '') + '.',
       { modal: true }, 'Save & Open GitHub');
     if (pick !== 'Save & Open GitHub') { this.post({ type: 'error', message: 'Not saved.' }); return; }
-    const { report, bundle } = await this.pack({ ...form, contact: '' });
+    const report: Report = { ...parts.report, contact: '' };
+    const bundle = zip(bundleEntries(report, parts.log, parts.project));
     const name = `v5sim-report-${new Date().toISOString().slice(0, 10)}-${randomBytes(3).toString('hex')}.zip`;
     const downloads = path.join(os.homedir(), 'Downloads');
     const target = await vscode.window.showSaveDialog({

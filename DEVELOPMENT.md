@@ -59,7 +59,7 @@ The extension stops a simulator only through `scripts/v5fleet.sh stop <id>`: det
 
 **V5 Sim: Report a Problem** (`src/feedback/`, `media/feedback.*`) POSTs `multipart/form-data` (`report` JSON + optional `bundle` zip with `report.json`, `log.txt`, `project/…`, `project-skipped.txt`) to `v5sim.feedbackEndpoint`, default `https://v5sim-feedback.unsw-rcc.workers.dev`. On failure, or with the setting empty, it saves the zip and opens a prefilled GitHub issue.
 
-The endpoint is `feedback-worker/`, a Cloudflare Worker on the **UNSW RCC** account: rate-limited (5 a minute per address), 25 MB per request, reports in the R2 bucket `v5sim-feedback-reports` under `reports/<day>/<uuid>/`. Deploy with `cd feedback-worker && npm ci && npx wrangler deploy`; the admin token is the Worker secret `ADMIN_TOKEN` (`npx wrangler secret put ADMIN_TOKEN`).
+The endpoint is `feedback-worker/`, a Cloudflare Worker on the **UNSW RCC** account: rate-limited (5 a minute per address, and 30 stored reports a minute in all), 14 MB per request, reports in the R2 bucket `v5sim-feedback-reports` under `reports/<day>/<uuid>/`. Deploy with `cd feedback-worker && npm ci && npx wrangler deploy`; the admin token is the Worker secret `ADMIN_TOKEN` (`npx wrangler secret put ADMIN_TOKEN`).
 
 Reading reports:
 
