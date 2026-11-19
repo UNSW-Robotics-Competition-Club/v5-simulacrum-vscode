@@ -31,7 +31,7 @@ Error reports follow VS Code's telemetry setting: they are sent when **Telemetry
 ## How long it is kept
 
 - Reports on Cloudflare are deleted automatically after **180 days**.
-- Sentry keeps error reports and the report copies for its plan's retention period, then deletes them.
+- Sentry keeps error reports and the report copies for **30 days** (its free plan's retention), then deletes them.
 
 ## Who can see it
 
@@ -39,4 +39,4 @@ Only the extension's maintainers. Reports are never published and are used only 
 
 ## Deleting your report
 
-After sending, the form shows a reference (for example `2026-11-20/1a2b3c4d-…`). To have a report deleted before then, contact the maintainers at **CONTACT ADDRESS** with that reference, or with the date and summary if you don't have it. It is deleted from Cloudflare and Sentry.
+After sending, the form shows a reference (for example `2026-11-20/1a2b3c4d-…`). To have a report deleted before then, email the maintainers at [sim@unswrobotics.com](mailto:sim@unswrobotics.com) with that reference, or with the date and summary if you don't have it. It is deleted from Cloudflare and Sentry.
