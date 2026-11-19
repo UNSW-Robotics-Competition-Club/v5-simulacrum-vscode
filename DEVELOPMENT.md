@@ -84,7 +84,7 @@ E2E_TOKEN=<token> node out/test/e2e/runE2E.js                               # in
 
 Packages are built with `--no-dependencies`, so `vscode:prepublish` (run by `vsce package`) bundles `@sentry/core` into `out/src/errors/sentry.js` (`scripts/bundle-sentry.mjs`).
 
-Turning it on: put the Sentry project's DSN in `SENTRY_DSN` in `src/errors/errorReporting.ts` (it is public by design). Empty means off. `V5SIM_SENTRY_DSN` overrides it (tests).
+The DSN is `SENTRY_DSN` in `src/errors/errorReporting.ts` (public by design; the club's Sentry project, EU region). Empty turns reporting off. `V5SIM_SENTRY_DSN` overrides it (tests). The Worker has the same DSN as its `SENTRY_DSN` secret, plus `LINK_KEY`.
 
 VS Code never sends extension telemetry during extension tests (and from an unbuilt VS Code), it only logs it to an "Extension Telemetry (Not Sent)" output, so `test/e2e/runErrorReports.ts` checks the real path by opening a downloaded VS Code with the extension and `test/e2e/probe` loaded and no test runner, against a fake Sentry:
 

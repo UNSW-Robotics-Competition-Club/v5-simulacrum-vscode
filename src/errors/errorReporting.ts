@@ -18,8 +18,9 @@ import { groupingKey, scrubEvent } from './scrub';
 import type { SentryReporter, SentryOptions } from './sentry';
 
 /** The Sentry project's DSN (public by design: it only lets clients send).
- *  Empty: error reporting is off. V5SIM_SENTRY_DSN overrides it (tests). */
-const SENTRY_DSN = '';
+ *  Empty: error reporting is off. V5SIM_SENTRY_DSN overrides it (tests).
+ *  Project: the club's Sentry org, EU region (ingest.de.sentry.io). */
+const SENTRY_DSN = 'https://bcd47336ef9ebb1f75e829ad9f2dfe98@o4512458784440320.ingest.de.sentry.io/4512458892836944';
 
 const MAX_EVENTS_PER_SESSION = 20;
 const LOG_TAIL_LINES = 40;
