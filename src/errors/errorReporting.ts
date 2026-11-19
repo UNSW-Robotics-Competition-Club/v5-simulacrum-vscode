@@ -14,7 +14,7 @@ import type { LogBuffer } from '../feedback/logBuffer';
 import { redact } from '../feedback/report';
 import { mode } from '../runtime';
 import { cfg } from '../settings';
-import { groupingKey, scrubEvent } from './scrub';
+import { type ScrubOptions, groupingKey, scrubEvent, scrubStack } from './scrub';
 import type { SentryReporter, SentryOptions } from './sentry';
 
 /** The Sentry project's DSN (public by design: it only lets clients send).
@@ -32,12 +32,13 @@ export type Stage = 'setup' | 'start' | 'usb-attach' | 'wsl-interop' | 'usb-driv
 
 let logger: vscode.TelemetryLogger | undefined;
 let logBuffer: LogBuffer | undefined;
+let scrubOptions: ScrubOptions | undefined;
 
 export function initErrorReporting(context: vscode.ExtensionContext, log: LogBuffer): void {
   const dsn = (process.env.V5SIM_SENTRY_DSN ?? SENTRY_DSN).trim();
   if (!dsn) return;
   const version = String(context.extension.packageJSON?.version ?? '0.0.0');
-  const scrub = { home: os.homedir(), user: userName(), extensionRoot: context.extensionPath };
+  const scrub: ScrubOptions = { home: os.homedir(), user: userName(), extensionRoot: context.extensionPath };
   // loaded only now, and a failure only turns reporting off: the extension
   // must start whatever happens to the Sentry bundle
   let sentry: SentryReporter;
@@ -53,6 +54,7 @@ export function initErrorReporting(context: vscode.ExtensionContext, log: LogBuf
     return;
   }
   logBuffer = log;
+  scrubOptions = scrub;
   let sent = 0;
   const sender: vscode.TelemetrySender = {
     sendEventData: () => undefined,          // no usage telemetry, errors only
@@ -60,6 +62,9 @@ export function initErrorReporting(context: vscode.ExtensionContext, log: LogBuf
       if (!cfg().get<boolean>('errorReporting', true) || sent >= MAX_EVENTS_PER_SESSION) return;
       sent++;
       const stage = typeof data?.stage === 'string' ? data.stage : 'unhandled';
+      // our own scrubbed frames, in place of the ones VS Code blanked
+      const frames = trusted(data?.stack);
+      if (frames) error.stack = `${error.name}: ${error.message}\n${frames}`;
       sentry.capture(error, {
         tags: {
           stage,
@@ -92,6 +97,7 @@ export function reportError(stage: Stage, error: unknown, opts: { withLog?: bool
     e.name = `V5Sim ${stage} failed`;
   }
   const data: Record<string, unknown> = { stage };
+  if (e.stack && scrubOptions) data.stack = new vscode.TelemetryTrustedValue(scrubStack(e.stack, scrubOptions));
   if (opts.withLog && logBuffer) {
     data.log = redact(logBuffer.text().split('\n').slice(-LOG_TAIL_LINES - 1).join('\n'), os.homedir(), userName());
   }
@@ -100,6 +106,13 @@ export function reportError(stage: Stage, error: unknown, opts: { withLog?: bool
   } catch {
     // reporting must never break what it reports on
   }
+}
+
+/** A trusted value as the sender gets it (VS Code may pass the wrapper or its value). */
+function trusted(v: unknown): string | undefined {
+  if (typeof v === 'string') return v;
+  if (v && typeof v === 'object' && typeof (v as { value?: unknown }).value === 'string') return (v as { value: string }).value;
+  return undefined;
 }
 
 function userName(): string {

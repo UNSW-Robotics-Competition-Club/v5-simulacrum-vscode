@@ -69,6 +69,14 @@ async function main(): Promise<void> {
         assert.ok(f.in_app ? f.filename.startsWith('app:///') : !/[\\/]/.test(f.filename ?? ''), JSON.stringify(f));
       }
     }
+    // VS Code blanks every path in error telemetry; ours must still name our own files
+    const startFrames: any[] = start.exception.values[0].stacktrace.frames;
+    assert.ok(startFrames.some(f => f.in_app && f.filename === 'app:///out/src/errors/errorReporting.js'), JSON.stringify(startFrames));
+    assert.ok(!JSON.stringify(startFrames).includes('REDACTED'), JSON.stringify(startFrames));
+    const setupFrames: any[] = setup.exception.values[0].stacktrace.frames;
+    // (the probe sits inside this repo, so its file counts as ours here)
+    assert.ok(setupFrames.some(f => f.filename === 'app:///test/e2e/probe/extension.js'), JSON.stringify(setupFrames));
+    console.log('start frames:', startFrames.map(f => `${f.filename}:${f.lineno}`).join(' <- '));
     console.log('ERROR REPORTS OK');
   } finally {
     sentry.close();

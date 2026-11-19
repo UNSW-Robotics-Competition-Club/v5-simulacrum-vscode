@@ -16,13 +16,20 @@ export interface ScrubOptions {
 
 const norm = (p: string) => p.replace(/\\/g, '/').replace(/^file:\/\/\/?/, '').toLowerCase();
 
-function scrubFrame(f: StackFrame, o: ScrubOptions): StackFrame {
+const APP = 'app:///';
+
+/** A frame's file as it may be sent: this extension's as app:///out/src/...
+ *  (already-rewritten ones kept), anything else as its bare file name. */
+function frameFile(file: string, o: ScrubOptions): { name: string | undefined; ours: boolean } {
+  if (file.startsWith(APP)) return { name: file, ours: true };
   const root = norm(o.extensionRoot).replace(/\/$/, '');
-  const file = f.filename ?? f.abs_path ?? '';
-  const ours = !!file && norm(file).startsWith(`${root}/`);
-  const name = ours
-    ? `app:///${file.replace(/\\/g, '/').slice(root.length + 1).replace(/^\//, '')}`
-    : file.split(/[\\/]/).pop() || undefined;
+  const plain = file.replace(/^file:\/\/\/?/, '').replace(/\\/g, '/');
+  if (plain && norm(plain).startsWith(`${root}/`)) return { name: `${APP}${plain.slice(root.length + 1)}`, ours: true };
+  return { name: plain.split('/').pop() || undefined, ours: false };
+}
+
+function scrubFrame(f: StackFrame, o: ScrubOptions): StackFrame {
+  const { name, ours } = frameFile(f.filename ?? f.abs_path ?? '', o);
   return {
     function: f.function ? redact(f.function, o.home, o.user) : f.function,
     filename: name,
@@ -31,6 +38,27 @@ function scrubFrame(f: StackFrame, o: ScrubOptions): StackFrame {
     colno: f.colno,
     in_app: ours,
   };
+}
+
+/** A V8 stack's frames ("    at fn (file:line:col)") with every file
+ *  rewritten as frameFile does, so they hold no path that could name the
+ *  user. VS Code blanks every path it finds in error telemetry, this
+ *  extension's own files included, so this goes to it as a trusted value. */
+export function scrubStack(stack: string, o: ScrubOptions): string {
+  const frames: string[] = [];
+  for (const line of stack.split('\n')) {
+    const m = /^\s*at (?:(.+?) \()?(.+?):(\d+):(\d+)\)?$/.exec(line);
+    if (!m) {
+      // frames without a file ("at new Promise (<anonymous>)") are kept if they hold no path
+      if (/^\s*at /.test(line) && !/[\\/]/.test(line)) frames.push(`    ${redact(line.trim(), o.home, o.user)}`);
+      continue;
+    }
+    const [, fn, file, lineNo, col] = m;
+    const { name } = frameFile(file, o);
+    const where = `${name ?? '<unknown>'}:${lineNo}:${col}`;
+    frames.push(fn ? `    at ${redact(fn, o.home, o.user)} (${where})` : `    at ${where}`);
+  }
+  return frames.join('\n');
 }
 
 /** The tags and extras this extension sets. Anything else on an event came

@@ -56,6 +56,9 @@ export function feedbackEnvelope(d: Dsn, id: string, report: Report, links: { re
   ];
   const contact = report.contact.trim();
   const item = {
+    // as Sentry's own SDK sends feedback: without the type, Sentry accepts
+    // the envelope (200) and then drops it
+    type: 'feedback',
     event_id: eventId,
     timestamp: now.getTime() / 1000,
     platform: 'javascript',
@@ -71,6 +74,7 @@ export function feedbackEnvelope(d: Dsn, id: string, report: Report, links: { re
       ...(typeof env.vscode === 'string' ? { vscode: env.vscode } : {}),
     },
     contexts: {
+      trace: { trace_id: eventId, span_id: eventId.slice(0, 16) },
       feedback: {
         message: lines.join('\n').slice(0, 4096),
         ...(EMAIL.test(contact) ? { contact_email: contact } : contact ? { name: contact } : {}),

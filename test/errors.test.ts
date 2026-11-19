@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 
 import type { ErrorEvent } from '@sentry/core';
 
-import { groupingKey, scrubEvent } from '../src/errors/scrub';
+import { groupingKey, scrubEvent, scrubStack } from '../src/errors/scrub';
 import { createSentry } from '../src/errors/sentry';
 
 const opts = { home: 'C:\\Users\\kevin', user: 'kevin', extensionRoot: 'c:\\Users\\kevin\\.vscode\\extensions\\v5sim-0.3.13' };
@@ -164,4 +164,30 @@ test('another extension\'s Sentry scopes do not get into our events', async () =
   assert.ok(Object.keys(sdk).every(k => ['name', 'version', 'integrations', 'packages'].includes(k)), JSON.stringify(sdk));
   assert.ok(sdk.packages.every((p: { name: string }) => p.name.startsWith('npm:@sentry/')), JSON.stringify(sdk));
   await sentry.close(1000);
+});
+
+test('scrubStack names our frames and keeps only the file name of others', () => {
+  const stack = [
+    'Error: x',
+    String.raw`    at SimInstance.start (C:\Users\kevin\.vscode\extensions\v5sim-0.3.13\out\src\simInstance.js:120:11)`,
+    '    at file:///c:/Users/kevin/.vscode/extensions/v5sim-0.3.13/out/src/runtime.js:7:3',
+    String.raw`    at x.$executeContributedCommand (c:\Program Files\Microsoft VS Code\resources\app\out\vs\workbench\api\node\extensionHostProcess.js:155:206)`,
+    '    at new Promise (<anonymous>)',
+    String.raw`    at C:\Users\kevin\robot\secret project\thing.js:1:1`,
+  ].join('\n');
+  assert.equal(scrubStack(stack, opts), [
+    '    at SimInstance.start (app:///out/src/simInstance.js:120:11)',
+    '    at app:///out/src/runtime.js:7:3',
+    '    at x.$executeContributedCommand (extensionHostProcess.js:155:206)',
+    '    at new Promise (<anonymous>)',
+    '    at thing.js:1:1',
+  ].join('\n'));
+  assert.ok(!/kevin|Users|secret project/i.test(scrubStack(stack, opts)));
+});
+
+test('scrubStack output survives scrubEvent unchanged (frames already app:///)', () => {
+  const e = scrubEvent({ type: undefined, exception: { values: [{ type: 'Error', value: 'x', stacktrace: { frames: [
+    { filename: 'app:///out/src/simInstance.js', function: 'start', lineno: 1, colno: 2, in_app: false }] } }] } }, opts);
+  assert.deepEqual(JSON.parse(JSON.stringify(e.exception!.values![0].stacktrace!.frames![0])),
+    { function: 'start', filename: 'app:///out/src/simInstance.js', lineno: 1, colno: 2, in_app: true });
 });

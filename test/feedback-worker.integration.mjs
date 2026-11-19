@@ -65,6 +65,8 @@ if (sentry) {
   let fb = [];
   for (let i = 0; i < 40 && !fb.length; i++) { await new Promise(r => setTimeout(r, 250)); fb = sentry.feedback(); }
   assert.equal(fb.length, 1, 'one feedback item forwarded to Sentry');
+  assert.equal(fb[0].type, 'feedback', 'Sentry drops feedback without it');
+  assert.match(fb[0].contexts.trace?.trace_id ?? '', /^[0-9a-f]{32}$/);
   const f = fb[0].contexts.feedback;
   assert.equal(f.contact_email, 'coach@school.example');
   assert.match(f.message, /^\[bug\] \[integration test\] brain screen black\n\nsteps…\n\nReport: /);
