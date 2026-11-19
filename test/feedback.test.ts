@@ -7,7 +7,7 @@ import * as path from 'node:path';
 
 import { crc32, safeEntryName, zip } from '../src/feedback/zip';
 import { unzip } from './zipRead';
-import { LIMITS, classify, scanProject } from '../src/feedback/projectFiles';
+import { LIMITS, classify, readProjectFiles, scanProject } from '../src/feedback/projectFiles';
 import { buildReport, bundleEntries, githubIssueUrl, readForm, redact, redactValue } from '../src/feedback/report';
 import { LogBuffer, teeLog } from '../src/feedback/logBuffer';
 import { SubmitError, submitReport } from '../src/feedback/submit';
@@ -138,8 +138,21 @@ test('redact takes out the home folder and user name in every spelling', () => {
   assert.equal(redact('C:\\Users\\kevin\\proj\\main.cpp', winHome, 'kevin'), '~\\proj\\main.cpp');
   assert.equal(redact('c:/users/KEVIN/proj', winHome, 'kevin'), '~/proj');
   assert.equal(redact('wsl: /home/kevin/.v5-simulacrum', winHome, 'kevin'), 'wsl: /home/<user>/.v5-simulacrum');
-  assert.equal(redact('/Users/kevin/x and /Users/kevinb/y', '/Users/kevin', 'kevin'), '~/x and /Users/kevinb/y');
-  assert.equal(redact('kevin wrote this', winHome, 'kevin'), 'kevin wrote this');
+  // not /Users/kevinb's folder as ~, but any account folder is still taken out
+  assert.equal(redact('/Users/kevin/x and /Users/kevinb/y', '/Users/kevin', 'kevin'), '~/x and /Users/<user>/y');
+  // WSL's user need not be the Windows one
+  assert.equal(redact('> v5brain.sh --robot @/home/jsmith/robot.args', winHome, 's123456'),
+    '> v5brain.sh --robot @/home/<user>/robot.args');
+  assert.equal(redact('cd "/home/jsmith" && /mnt/c/Users/jane/x', winHome, 'x'), 'cd "/home/<user>" && /mnt/c/Users/<user>/x');
+  // the user's own home is matched whole, spaces and all
+  assert.equal(redact('C:\\Users\\Jane Smith\\robot', 'C:\\Users\\Jane Smith', 'Jane Smith'), '~\\robot');
+  assert.equal(redact('see project/home/notes.txt and C:\\School\\Homework', winHome, 'x'),
+    'see project/home/<user> and C:\\School\\Homework');
+  // the user name on its own, and the computer's name
+  assert.equal(redact('jsmith@JSMITH-LAPTOP:~$ whoami: jsmith', winHome, 'jsmith', 'JSMITH-LAPTOP'),
+    '<user>@<host>:~$ whoami: <user>');
+  assert.equal(redact('jsmithson and myjsmith stay', winHome, 'jsmith'), 'jsmithson and myjsmith stay');
+  assert.equal(redact('ab is too short to look for', winHome, 'ab'), 'ab is too short to look for');
   assert.deepEqual(redactValue({ a: ['C:\\Users\\kevin\\a'], n: 1, b: null }, winHome, 'kevin'),
     { a: ['~\\a'], n: 1, b: null });
 });
@@ -153,12 +166,28 @@ test('the environment goes into the report only with the log', () => {
 test('bundleEntries holds the report, log and project files', () => {
   const report = buildReport({ kind: 'bug', summary: 's', description: 'd', contact: '', includeLog: true,
     includeProject: true }, { os: 'x' });
-  const scan = { root: '/p', totalBytes: 2, files: [{ rel: 'src/a.cpp', abs: '/p/src/a.cpp', size: 2 }],
+  const project = { files: [{ rel: 'src/a.cpp', data: Buffer.from('ab') }],
     skipped: [{ rel: '.env', reason: 'possible secret' as const }] };
-  const entries = bundleEntries(report, 'log\n', scan, () => Buffer.from('ab'));
+  const entries = bundleEntries(report, 'log\n', project);
   assert.deepEqual(entries.map(e => e.name), ['report.json', 'log.txt', 'project-skipped.txt', 'project/src/a.cpp']);
   assert.equal(String(entries[2].data), '.env\tpossible secret\n');
-  assert.deepEqual(bundleEntries(report, undefined, undefined, () => Buffer.alloc(0)).map(e => e.name), ['report.json']);
+  assert.deepEqual(bundleEntries(report, undefined, undefined).map(e => e.name), ['report.json']);
+});
+
+test('readProjectFiles leaves out files deleted or grown since the scan', async () => {
+  const root = tmp();
+  for (const f of ['a.cpp', 'b.cpp', 'c.cpp', 'd.cpp']) fs.writeFileSync(path.join(root, f), 'x'.repeat(10));
+  const limits = { ...LIMITS, fileBytes: 50, totalBytes: 25 };
+  const scan = await scanProject(root, { ...limits, totalBytes: 1000 });
+  fs.rmSync(path.join(root, 'b.cpp'));                       // deleted while the form was open
+  fs.writeFileSync(path.join(root, 'c.cpp'), 'x'.repeat(60)); // grew past the per-file limit
+  const read = await readProjectFiles(scan, limits);
+  assert.deepEqual(read.files.map(f => f.rel), ['a.cpp', 'd.cpp']);
+  assert.deepEqual(read.skipped, [{ rel: 'b.cpp', reason: 'unreadable' }, { rel: 'c.cpp', reason: 'too large' }]);
+  assert.equal(String(read.files[0].data), 'x'.repeat(10));
+  const capped = await readProjectFiles(scan, { ...limits, totalBytes: 15 });
+  assert.deepEqual(capped.files.map(f => f.rel), ['a.cpp']);
+  assert.ok(capped.skipped.some(s => s.rel === 'd.cpp' && s.reason === 'limit reached'));
 });
 
 test('githubIssueUrl prefills title and body and stays short', () => {

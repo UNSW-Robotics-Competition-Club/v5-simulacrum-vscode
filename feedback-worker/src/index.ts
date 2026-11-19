@@ -22,9 +22,6 @@ async function intake(request: Request, env: Env): Promise<Response> {
   const ip = request.headers.get('cf-connecting-ip') ?? 'unknown';
   const { success } = await env.LIMITER.limit({ key: ip });
   if (!success) return fail(429, 'too many reports from here; try again in a minute');
-  if (!(await env.GLOBAL_LIMITER.limit({ key: 'all' })).success) {
-    return fail(429, 'the feedback server is busy; try again in a minute');
-  }
 
   const length = Number(request.headers.get('content-length') ?? NaN);
   if (!Number.isFinite(length)) return fail(411, 'content-length required');
@@ -46,6 +43,11 @@ async function intake(request: Request, env: Env): Promise<Response> {
     bytes = await bundle.arrayBuffer();
     const head = new Uint8Array(bytes, 0, Math.min(4, bytes.byteLength));
     if (head.length < 4 || ZIP_MAGIC.some((b, i) => head[i] !== b)) return fail(400, 'bundle is not a zip');
+  }
+  // all senders together, counting only reports that would be stored, so
+  // junk from a few addresses can't use up everyone's share
+  if (!(await env.GLOBAL_LIMITER.limit({ key: 'all' })).success) {
+    return fail(429, 'the feedback server is busy; try again in a minute');
   }
 
   const now = new Date();

@@ -2,7 +2,7 @@
 // environment and log, and what goes into the zip bundle. No vscode import:
 // the tests run this under plain Node.
 import type { ZipEntry } from './zip';
-import type { ProjectScan } from './projectFiles';
+import type { ProjectRead } from './projectFiles';
 
 export type Kind = 'bug' | 'idea' | 'question';
 export const KINDS: readonly Kind[] = ['bug', 'idea', 'question'];
@@ -46,26 +46,30 @@ export function readForm(m: unknown): FeedbackForm | string {
 
 const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-/** Takes the user's home folder and name out of text (paths in logs and
- *  settings): C:\Users\name, /Users/name, /home/name become ~. */
-export function redact(text: string, home: string, user: string): string {
+/** Takes the user's identity out of text (logs, settings, messages):
+ *  - their home folder becomes ~;
+ *  - the account folder in any home path (C:\Users\x, /Users/x, /home/x,
+ *    /mnt/c/Users/x) becomes <user>: WSL's Linux user need not be the
+ *    Windows one;
+ *  - the computer's name (host) becomes <host>, and the user name on its
+ *    own (as a whole word, 3+ characters) <user>, e.g. in "jane@JANE-PC:". */
+export function redact(text: string, home: string, user: string, host = ''): string {
   let out = text;
   const homes = new Set([home, home.replace(/\\/g, '/'), home.replace(/\//g, '\\')].filter(h => h.length > 3));
   // not /Users/kevinb for /Users/kevin
   for (const h of homes) out = out.replace(new RegExp(`${escapeRe(h)}(?![\\w.-])`, 'gi'), '~');
-  if (user && user.length > 1) {
-    const u = escapeRe(user);
-    out = out.replace(new RegExp(`([\\\\/](?:Users|home)[\\\\/])${u}(?=[\\\\/]|$|\\s)`, 'gi'), '$1<user>');
-  }
+  out = out.replace(/([\\/](?:Users|home)[\\/])(?!<user>)[^\\/\s'"`)<>:]+/gi, '$1<user>');
+  if (host.length > 1) out = out.replace(new RegExp(`(?<![\\w.-])${escapeRe(host)}(?![\\w-])`, 'gi'), '<host>');
+  if (user.length > 2) out = out.replace(new RegExp(`(?<![\\w.-])${escapeRe(user)}(?![\\w-])`, 'gi'), '<user>');
   return out;
 }
 
 /** Recursively redacts every string in a JSON value. */
-export function redactValue<T>(value: T, home: string, user: string): T {
-  if (typeof value === 'string') return redact(value, home, user) as T;
-  if (Array.isArray(value)) return value.map(v => redactValue(v, home, user)) as T;
+export function redactValue<T>(value: T, home: string, user: string, host = ''): T {
+  if (typeof value === 'string') return redact(value, home, user, host) as T;
+  if (Array.isArray(value)) return value.map(v => redactValue(v, home, user, host)) as T;
   if (value && typeof value === 'object') {
-    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, redactValue(v, home, user)])) as T;
+    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, redactValue(v, home, user, host)])) as T;
   }
   return value;
 }
@@ -81,14 +85,13 @@ export function buildReport(form: FeedbackForm, environment: Record<string, unkn
 }
 
 /** The zip's files: report.json, log.txt and project/... as chosen. */
-export function bundleEntries(report: Report, log: string | undefined, project: ProjectScan | undefined,
-                              read: (abs: string) => Buffer): ZipEntry[] {
+export function bundleEntries(report: Report, log: string | undefined, project: ProjectRead | undefined): ZipEntry[] {
   const entries: ZipEntry[] = [{ name: 'report.json', data: JSON.stringify(report, null, 2) }];
   if (log !== undefined) entries.push({ name: 'log.txt', data: log });
   if (project) {
     entries.push({ name: 'project-skipped.txt',
       data: project.skipped.map(s => `${s.rel}\t${s.reason}`).join('\n') + '\n' });
-    for (const f of project.files) entries.push({ name: `project/${f.rel}`, data: read(f.abs) });
+    for (const f of project.files) entries.push({ name: `project/${f.rel}`, data: f.data });
   }
   return entries;
 }
