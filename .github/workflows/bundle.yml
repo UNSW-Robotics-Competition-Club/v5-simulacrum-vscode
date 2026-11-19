@@ -118,6 +118,8 @@ jobs:
           name: release-runtime-assets
           path: release/*
           if-no-files-found: error
+      - name: Each package's error reporter works without node_modules
+        run: node scripts/check-vsix.mjs dist/*.vsix
       - uses: actions/upload-artifact@v4
         with:
           name: v5-simulacrum-vscode-darwin-arm64

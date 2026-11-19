@@ -10,6 +10,7 @@ import { diskFs, runOn, vexSdkRoot } from './runProgram';
 import { isMac, isWindows, usbipExe } from './runner';
 import { cfg, slotSetting } from './settings';
 import { SimInstance } from './simInstance';
+import { reporting } from './errors/errorReporting';
 
 const TIP_KEY = 'v5sim.macRunTipShown';
 /** A build writes its .bin more than once: offer once it has settled. */
@@ -46,7 +47,7 @@ export function initRunOnSim(context: vscode.ExtensionContext, sim: SimInstance,
     timers.set(key, setTimeout(() => {
       timers.delete(key);
       log?.appendLine(`[v5sim] new build: ${file}`);
-      void offerBuild(sim, file, root);
+      void reporting('run-on-sim', "Couldn't run the new build on the simulator", () => offerBuild(sim, file, root));
     }, SETTLE_MS));
   };
   const watcher = vscode.workspace.createFileSystemWatcher('**/{build,bin}/*.bin');

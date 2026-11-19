@@ -1,0 +1,163 @@
+// End-to-end check of the extension's feedback modules against a running
+// feedback Worker (not part of `npm test`: it needs a Worker).
+//   cd feedback-worker && npx wrangler dev --port 8799   (ADMIN_TOKEN in .dev.vars)
+//   npx tsc -p . && V5SIM_FEEDBACK_URL=http://localhost:8799 V5SIM_FEEDBACK_TOKEN=... node test/feedback-worker.integration.mjs
+// Against the deployed Worker it leaves one report behind (summary starts "[integration test]").
+import assert from 'node:assert/strict';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
+import { createRequire } from 'node:module';
+
+const require = createRequire(import.meta.url);
+const out = path.join(path.dirname(new URL(import.meta.url).pathname.replace(/^\/(\w:)/, '$1')), '..', 'out', 'src', 'feedback');
+const { zip } = require(path.join(out, 'zip.js'));
+const { readProjectFiles, scanProject } = require(path.join(out, 'projectFiles.js'));
+const { buildReport, bundleEntries } = require(path.join(out, 'report.js'));
+const { submitReport, SubmitError } = require(path.join(out, 'submit.js'));
+
+const base = process.env.V5SIM_FEEDBACK_URL ?? 'http://localhost:8799';
+const token = process.env.V5SIM_FEEDBACK_TOKEN;
+assert.ok(token, 'set V5SIM_FEEDBACK_TOKEN');
+
+// a small PROS-like project
+const root = fs.mkdtempSync(path.join(os.tmpdir(), 'v5sim-int-'));
+const w = (rel, data) => { fs.mkdirSync(path.dirname(path.join(root, rel)), { recursive: true }); fs.writeFileSync(path.join(root, rel), data); };
+w('project.pros', '{"py/object": "pros.conductor.project.Project"}');
+w('src/main.cpp', '#include "main.h"\nvoid opcontrol() {}\n');
+w('include/main.h', '#pragma once\n');
+w('.env', 'SECRET=1');
+w('bin/monolith.bin', 'x');
+
+// With V5SIM_FAKE_SENTRY_PORT (the port in the Worker's SENTRY_DSN, local
+// runs), a fake Sentry checks what the Worker forwards.
+const { startFakeSentry } = require(path.join(out, '..', '..', 'test', 'e2e', 'fakeSentry.js'));
+const sentryPort = Number(process.env.V5SIM_FAKE_SENTRY_PORT ?? 0);
+const sentry = sentryPort ? await startFakeSentry(sentryPort) : undefined;
+
+const form = { kind: 'bug', summary: '[integration test] brain screen black', description: 'steps…', contact: 'coach@school.example',
+  includeLog: true, includeProject: true };
+const report = buildReport(form, { extension: 'test', platform: process.platform });
+const scan = await scanProject(root);
+const bundle = zip(bundleEntries(report, 'log line\n', await readProjectFiles(scan)));
+
+const { id } = await submitReport(base, report, bundle, 'v5sim-vscode/integration');
+assert.match(id, /^\d{4}-\d{2}-\d{2}\/[0-9a-f-]{36}$/);
+console.log('submitted', id);
+
+const admin = p => fetch(`${base}/admin/reports${p}`, { headers: { authorization: `Bearer ${token}` } });
+const stored = await (await admin(`/${id}/report.json`)).json();
+assert.equal(stored.summary, form.summary);
+assert.equal(stored.kind, 'bug');
+assert.equal(stored.bundleBytes, bundle.length);
+const back = Buffer.from(await (await admin(`/${id}/bundle.zip`)).arrayBuffer());
+if (!back.equals(bundle)) {
+  const at = back.findIndex((b, i) => b !== bundle[i]);
+  fs.writeFileSync(path.join(os.tmpdir(), 'sent.zip'), bundle);
+  fs.writeFileSync(path.join(os.tmpdir(), 'back.zip'), back);
+  assert.fail(`bundle differs: ${back.length} vs ${bundle.length} bytes, first at ${at}`);
+}
+const listed = await (await admin(`?day=${id.slice(0, 10)}`)).json();
+assert.ok(listed.reports.some(r => r.id === id && r.summary === form.summary), 'listed');
+console.log('stored and listed ok');
+
+let bundleLink;                // a signed download link, to check it dies with the report
+if (sentry) {
+  let fb = [];
+  for (let i = 0; i < 40 && !fb.length; i++) { await new Promise(r => setTimeout(r, 250)); fb = sentry.feedback(); }
+  assert.equal(fb.length, 1, 'one feedback item forwarded to Sentry');
+  assert.equal(fb[0].type, 'feedback', 'Sentry drops feedback without it');
+  assert.match(fb[0].contexts.trace?.trace_id ?? '', /^[0-9a-f]{32}$/);
+  const f = fb[0].contexts.feedback;
+  assert.equal(f.contact_email, 'coach@school.example');
+  assert.match(f.message, /^\[bug\] \[integration test\] brain screen black\n\nsteps…\n\nReport: /);
+  assert.equal(fb[0].tags.report, id);
+  assert.ok(!f.message.includes('opcontrol'), 'no code in Sentry');
+  const link = /bundle\.zip \(log, project\): (\S+)/.exec(f.message)?.[1];
+  bundleLink = link;
+  assert.ok(link, 'a download link for the bundle');
+  const viaLink = Buffer.from(await (await fetch(link)).arrayBuffer());
+  assert.ok(viaLink.equals(bundle), 'the signed link downloads the bundle');
+  const forged = link.replace(/sig=[0-9a-f]+/, `sig=${'0'.repeat(64)}`);
+  assert.equal((await fetch(forged)).status, 404, 'a wrong signature is refused');
+  const other = link.replace('bundle.zip', 'report.json');
+  assert.equal((await fetch(other)).status, 404, 'a signature only opens its own file');
+  const exp = Number(/exp=(\d+)/.exec(link)[1]);
+  assert.ok(exp > Date.now() / 1000 + 59 * 86400 && exp < Date.now() / 1000 + 61 * 86400, 'links last 60 days');
+  assert.equal((await fetch(link.replace(/exp=\d+/, `exp=${exp + 86400}`))).status, 404, 'the expiry is signed');
+  assert.equal((await fetch(link.replace(/exp=\d+/, 'exp=1000'))).status, 410, 'an expired link is refused');
+  sentry.close();
+  console.log('sentry feedback and signed links ok');
+}
+
+// any language: the summary is also R2 metadata, which must take it
+const intl = { ...report, summary: '[integration test] 机器人不动 – ünïcødé 🤖' };
+const { id: intlId } = await submitReport(base, intl, bundle, 'v5sim-vscode/integration');
+const intlListed = await (await admin(`?day=${intlId.slice(0, 10)}`)).json();
+assert.equal(intlListed.reports.find(r => r.id === intlId)?.summary, intl.summary, 'non-ASCII summary listed intact');
+assert.equal((await (await admin(`/${intlId}/report.json`)).json()).summary, intl.summary);
+console.log('non-ASCII summary ok');
+
+// refusals. Every POST counts toward the rate limit (5 a minute), so a 429
+// here means wait for the next minute and ask again.
+const post = async init => {
+  for (;;) {
+    const res = await fetch(`${base}/report`, { method: 'POST', ...init });
+    if (res.status !== 429) return res;
+    console.log('rate limited; waiting a minute');
+    await new Promise(r => setTimeout(r, 61_000));
+  }
+};
+assert.equal((await fetch(`${base}/admin/reports`)).status, 401);
+assert.equal((await fetch(`${base}/admin/reports`, { headers: { authorization: 'Bearer wrong' } })).status, 401);
+assert.equal((await fetch(`${base}/report`)).status, 405);
+const bad = async (fields, status, re) => {
+  const fd = new FormData();
+  for (const [k, v] of Object.entries(fields)) fd.append(k, v);
+  const res = await post({ body: fd });
+  const body = await res.json();
+  assert.equal(res.status, status, JSON.stringify(body));
+  if (re) assert.match(body.error, re);
+};
+await bad({ report: '{' }, 400, /JSON/);
+await bad({ report: JSON.stringify({ ...report, kind: 'rant' }) }, 400, /kind/);
+await bad({ report: JSON.stringify({ ...report, summary: '' }) }, 400, /summary/);
+await bad({ report: JSON.stringify(report), bundle: new Blob(['not a zip']) }, 400, /zip/);
+const plain = await post({ body: '{}', headers: { 'content-type': 'application/json' } });
+assert.equal(plain.status, 415);
+console.log('refusals ok');
+
+// rate limit: 5 a minute per address (some already used above)
+let limited = false;
+for (let i = 0; i < 8 && !limited; i++) {
+  try { await submitReport(base, { ...report, summary: '[integration test] rate' }, undefined, 'it'); } catch (e) {
+    assert.ok(e instanceof SubmitError);
+    if (e.status === 429) limited = true; else throw e;
+  }
+}
+assert.ok(limited, 'rate limited');
+console.log('rate limit ok');
+// deleting: refused without the token or for a bad id; the script deletes
+// both files, after which the report, its bundle and its link are gone
+const del = (p, auth = true) => fetch(`${base}/admin/reports${p}`, { method: 'DELETE',
+  headers: auth ? { authorization: `Bearer ${token}` } : {} });
+assert.equal((await del(`/${id}`, false)).status, 401, 'no deleting without the token');
+assert.equal((await del('/2026-01-01/not-a-uuid')).status, 404);
+assert.equal((await del(`/${id}/report.json`)).status, 404, 'a report is deleted whole, not file by file');
+const { spawnSync } = await import('node:child_process');
+const script = path.join(path.dirname(out), '..', '..', 'feedback-worker', 'scripts', 'reports.mjs');
+const run = spawnSync(process.execPath, [script, 'delete', id, '--yes'],
+  { env: { ...process.env, V5SIM_FEEDBACK_URL: base, V5SIM_FEEDBACK_TOKEN: token }, encoding: 'utf8' });
+assert.equal(run.status, 0, run.stderr);
+assert.equal(run.stdout.trim(), `deleted ${id} (report.json, bundle.zip)`);
+assert.equal((await admin(`/${id}/report.json`)).status, 404, 'report gone');
+assert.equal((await admin(`/${id}/bundle.zip`)).status, 404, 'bundle gone');
+assert.ok(!(await (await admin(`?day=${id.slice(0, 10)}`)).json()).reports.some(r => r.id === id), 'not listed');
+if (bundleLink) assert.equal((await fetch(bundleLink)).status, 404, 'its download link is dead');
+assert.equal((await del(`/${id}`)).status, 404, 'deleting twice: not found');
+const noTty = spawnSync(process.execPath, [script, 'delete', id],
+  { env: { ...process.env, V5SIM_FEEDBACK_URL: base, V5SIM_FEEDBACK_TOKEN: token }, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
+assert.equal(noTty.status, 2, 'without a terminal it needs --yes');
+console.log('delete ok');
+
+console.log('ALL OK');

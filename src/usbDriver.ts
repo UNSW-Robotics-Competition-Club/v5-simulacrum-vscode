@@ -6,6 +6,7 @@ import * as vscode from 'vscode';
 
 import { isWindows, onPath, usbipExe } from './runner';
 import { USBIP_PINNED_VERSION, USBIP_RELEASE_URL, WINGET_INSTALL_ARGS } from './usbip';
+import { reportError } from './errors/errorReporting';
 
 const DECLINED_KEY = 'v5sim.usbDriverDeclined';
 const INSTALL = 'Install USB driver';
@@ -69,6 +70,7 @@ export async function installUsbDriver(): Promise<boolean> {
 }
 
 async function openReleasePage(why: string): Promise<false> {
+  reportError('usb-driver', why);
   const open = 'Open download page';
   const pick = await vscode.window.showErrorMessage(
     `Couldn't install the USB driver (${why}). Install usbip-win2 ${USBIP_PINNED_VERSION} ` +

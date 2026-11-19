@@ -22,6 +22,8 @@ jobs:
       - name: Compile and test (parser tests; the preset round-trips need a simulator checkout and are skipped)
         run: npm test
       - run: npm run package
+      - name: The package's error reporter works without node_modules
+        run: node scripts/check-vsix.mjs *.vsix
       - uses: actions/upload-artifact@v4
         with:
           name: v5-simulacrum-vscode-vsix

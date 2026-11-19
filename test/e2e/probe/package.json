@@ -1,0 +1,10 @@
+{
+  "name": "v5sim-error-report-probe",
+  "displayName": "V5 Sim error report probe (tests only)",
+  "version": "0.0.0",
+  "publisher": "v5sim-tests",
+  "private": true,
+  "engines": { "vscode": "^1.85.0" },
+  "activationEvents": ["onStartupFinished"],
+  "main": "./extension.js"
+}

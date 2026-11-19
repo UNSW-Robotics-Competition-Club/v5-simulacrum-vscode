@@ -1,5 +1,7 @@
 import * as vscode from 'vscode';
 
+import { FeedbackPanel } from './feedback/feedbackPanel';
+import { LogBuffer, teeLog } from './feedback/logBuffer';
 import { PortsPanel } from './panels/portsPanel';
 import { Page, WebPanel } from './panels/webPanel';
 import { initPrograms, programTerminal, runEditorProgram, runProgram } from './runProgram';
@@ -9,11 +11,15 @@ import { initRuntime, simRunner } from './runtime';
 import { cfg } from './settings';
 import { SimInstance } from './simInstance';
 import { initUsbDriver, installUsbDriver } from './usbDriver';
+import { initErrorReporting, reporting } from './errors/errorReporting';
 
 let sim: SimInstance | undefined;
 
 export function activate(context: vscode.ExtensionContext): void {
-  const log = quietWhenClosed(vscode.window.createOutputChannel('V5 Sim'));
+  // teed so a feedback report can include it (output channels can't be read)
+  const logBuffer = new LogBuffer();
+  const log = teeLog(quietWhenClosed(vscode.window.createOutputChannel('V5 Sim')), logBuffer);
+  initErrorReporting(context, logBuffer);
   initRuntime(context, log);
   initUsbDriver(context);
   sim = new SimInstance(log);
@@ -73,13 +79,16 @@ export function activate(context: vscode.ExtensionContext): void {
       return PortsPanel.open(context, s, file?.endsWith('.args') ? file : undefined);
     },
     'v5sim.showLog': () => log.show(),
+    'v5sim.reportIssue': () => FeedbackPanel.open({ context, sim: s, log: logBuffer }),
     'v5sim.repair': async () => {
       if (s.state !== 'stopped') await s.stop();
       if (await simRunner(true)) vscode.window.showInformationMessage('The V5 simulator is set up.');
     },
     'v5sim.installUsbDriver': () => installUsbDriver(),
-    'v5sim.runProgram': (uri?: vscode.Uri) => runProgram(s, uri instanceof vscode.Uri ? uri.fsPath : undefined),
-    'v5sim.runEditorProgram': (uri?: vscode.Uri) => runEditorProgram(s, uri instanceof vscode.Uri ? uri.fsPath : vscode.window.activeTextEditor?.document.uri.fsPath),
+    'v5sim.runProgram': (uri?: vscode.Uri) => reporting('run-on-sim', "Couldn't run the program on the simulator",
+      () => runProgram(s, uri instanceof vscode.Uri ? uri.fsPath : undefined)),
+    'v5sim.runEditorProgram': (uri?: vscode.Uri) => reporting('run-on-sim', "Couldn't run the project on the simulator",
+      () => runEditorProgram(s, uri instanceof vscode.Uri ? uri.fsPath : vscode.window.activeTextEditor?.document.uri.fsPath)),
     'v5sim.programTerminal': () => programTerminal(s),
     'v5sim.menu': async () => {
       const running = s.state === 'running';
@@ -96,6 +105,7 @@ export function activate(context: vscode.ExtensionContext): void {
         { label: '$(plug) Configure ports', cmd: 'v5sim.configurePorts',
           description: cfg().get<string>('preset', '') },
         { label: '$(output) Log', cmd: 'v5sim.showLog' },
+        { label: '$(feedback) Report a problem / send feedback', cmd: 'v5sim.reportIssue' },
       ];
       const pick = await vscode.window.showQuickPick(items, { placeHolder: 'V5 brain simulator' });
       if (pick) await vscode.commands.executeCommand(pick.cmd);

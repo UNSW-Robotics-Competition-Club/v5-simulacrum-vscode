@@ -15,3 +15,6 @@ dist/**
 .gstack/**
 media/icon.svg
 DEVELOPMENT.md
+feedback-worker/**
+.vscode-test/**
+scripts/**

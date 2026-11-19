@@ -125,6 +125,12 @@
         "category": "V5 Sim"
       },
       {
+        "command": "v5sim.reportIssue",
+        "title": "Report a Problem / Send Feedback",
+        "category": "V5 Sim",
+        "icon": "$(feedback)"
+      },
+      {
         "command": "v5sim.menu",
         "title": "Menu",
         "category": "V5 Sim"
@@ -278,6 +284,18 @@
           ],
           "default": "ask",
           "markdownDescription": "When a build writes a program (VEXcode's `build/*.bin`, PROS's `bin/monolith.bin`): run it on the simulated brain in slot `v5sim.slot`. For a Mac, where VEXcode's Download button can't see the simulator; not on Windows with usbip-win2, where it can."
+        },
+        "v5sim.errorReporting": {
+          "type": "boolean",
+          "default": true,
+          "scope": "application",
+          "markdownDescription": "Send the maintainers a report when the simulator fails to set up or start, or the extension hits an error: the error, where it happened, the extension, VS Code and OS versions, and for a failed start the last lines of the V5 Sim log (home folder and user name taken out). No code. Only sent when VS Code's `#telemetry.telemetryLevel#` allows errors."
+        },
+        "v5sim.feedbackEndpoint": {
+          "type": "string",
+          "scope": "application",
+          "default": "https://v5sim-feedback.unsw-rcc.workers.dev",
+          "markdownDescription": "Where **V5 Sim: Report a Problem** sends reports (a user setting only: a project's settings can't redirect them). Empty: the report is saved as a zip and a prefilled GitHub issue opens instead."
         }
       }
     },
@@ -301,7 +319,7 @@
     "viewsWelcome": [
       {
         "view": "v5sim.home",
-        "contents": "The VEX V5 brain simulator.\n[$(play) Start the simulator](command:v5sim.start)\n[Brain screen](command:v5sim.openBrain)\n[Device dashboard](command:v5sim.openDashboard)\n[Field view](command:v5sim.openField)\n[Controller](command:v5sim.openController)\n[Configure ports](command:v5sim.configurePorts)\n[Run program on sim](command:v5sim.runProgram)\n[Stop](command:v5sim.stop)\nThe first start unpacks the simulator and downloads VEX's firmware (VEXos) from VEX, which takes a few seconds. On Windows the simulator runs in WSL; if it isn't installed, you'll be offered to install it.\n[Show log](command:v5sim.showLog) · [Repair simulator](command:v5sim.repair)"
+        "contents": "The VEX V5 brain simulator.\n[$(play) Start the simulator](command:v5sim.start)\n[Brain screen](command:v5sim.openBrain)\n[Device dashboard](command:v5sim.openDashboard)\n[Field view](command:v5sim.openField)\n[Controller](command:v5sim.openController)\n[Configure ports](command:v5sim.configurePorts)\n[Run program on sim](command:v5sim.runProgram)\n[Stop](command:v5sim.stop)\nThe first start unpacks the simulator and downloads VEX's firmware (VEXos) from VEX, which takes a few seconds. On Windows the simulator runs in WSL; if it isn't installed, you'll be offered to install it.\n[Show log](command:v5sim.showLog) · [Repair simulator](command:v5sim.repair) · [Report a problem](command:v5sim.reportIssue)"
       }
     ]
   },
@@ -309,12 +327,18 @@
     "compile": "tsc -p .",
     "watch": "tsc -watch -p .",
     "test": "tsc -p . && node --test out/test/*.test.js",
-    "package": "vsce package --no-dependencies"
+    "package": "vsce package --no-dependencies",
+    "vscode:prepublish": "tsc -p . && node scripts/bundle-sentry.mjs"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
     "@types/vscode": "~1.85.0",
+    "@vscode/test-electron": "^3.1.0",
     "@vscode/vsce": "^3.0.0",
+    "esbuild": "0.28.2",
     "typescript": "^5.6.0"
+  },
+  "dependencies": {
+    "@sentry/core": "11.14.0"
   }
 }
