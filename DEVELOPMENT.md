@@ -67,9 +67,12 @@ Reading reports:
 cd feedback-worker
 V5SIM_FEEDBACK_TOKEN=<ADMIN_TOKEN> npm run reports -- list [yyyy-mm-dd]
 V5SIM_FEEDBACK_TOKEN=<ADMIN_TOKEN> npm run reports -- get <yyyy-mm-dd/uuid> [out-dir]
+V5SIM_FEEDBACK_TOKEN=<ADMIN_TOKEN> npm run reports -- delete <yyyy-mm-dd/uuid>... [--yes]
 ```
 
 Bundles contain students' code: open them as untrusted input and don't publish them.
+
+**Deletion requests** ([PRIVACY.md](PRIVACY.md) promises them): `delete` shows each report and asks, then removes its `report.json` and `bundle.zip` from R2 (its download links stop working). The copy in Sentry is separate: find it under **User Feedback** by the `report` tag (the same id) and delete it there; error reports can be found by date and deleted the same way.
 
 Tests beyond `npm test` (they need a Worker, `npx wrangler dev --port 8799` with `ADMIN_TOKEN` in `feedback-worker/.dev.vars`):
 

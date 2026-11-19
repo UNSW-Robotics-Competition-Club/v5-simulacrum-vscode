@@ -61,6 +61,7 @@ const listed = await (await admin(`?day=${id.slice(0, 10)}`)).json();
 assert.ok(listed.reports.some(r => r.id === id && r.summary === form.summary), 'listed');
 console.log('stored and listed ok');
 
+let bundleLink;                // a signed download link, to check it dies with the report
 if (sentry) {
   let fb = [];
   for (let i = 0; i < 40 && !fb.length; i++) { await new Promise(r => setTimeout(r, 250)); fb = sentry.feedback(); }
@@ -73,6 +74,7 @@ if (sentry) {
   assert.equal(fb[0].tags.report, id);
   assert.ok(!f.message.includes('opcontrol'), 'no code in Sentry');
   const link = /bundle\.zip \(log, project\): (\S+)/.exec(f.message)?.[1];
+  bundleLink = link;
   assert.ok(link, 'a download link for the bundle');
   const viaLink = Buffer.from(await (await fetch(link)).arrayBuffer());
   assert.ok(viaLink.equals(bundle), 'the signed link downloads the bundle');
@@ -127,4 +129,27 @@ for (let i = 0; i < 8 && !limited; i++) {
 }
 assert.ok(limited, 'rate limited');
 console.log('rate limit ok');
+// deleting: refused without the token or for a bad id; the script deletes
+// both files, after which the report, its bundle and its link are gone
+const del = (p, auth = true) => fetch(`${base}/admin/reports${p}`, { method: 'DELETE',
+  headers: auth ? { authorization: `Bearer ${token}` } : {} });
+assert.equal((await del(`/${id}`, false)).status, 401, 'no deleting without the token');
+assert.equal((await del('/2026-01-01/not-a-uuid')).status, 404);
+assert.equal((await del(`/${id}/report.json`)).status, 404, 'a report is deleted whole, not file by file');
+const { spawnSync } = await import('node:child_process');
+const script = path.join(path.dirname(out), '..', '..', 'feedback-worker', 'scripts', 'reports.mjs');
+const run = spawnSync(process.execPath, [script, 'delete', id, '--yes'],
+  { env: { ...process.env, V5SIM_FEEDBACK_URL: base, V5SIM_FEEDBACK_TOKEN: token }, encoding: 'utf8' });
+assert.equal(run.status, 0, run.stderr);
+assert.equal(run.stdout.trim(), `deleted ${id} (report.json, bundle.zip)`);
+assert.equal((await admin(`/${id}/report.json`)).status, 404, 'report gone');
+assert.equal((await admin(`/${id}/bundle.zip`)).status, 404, 'bundle gone');
+assert.ok(!(await (await admin(`?day=${id.slice(0, 10)}`)).json()).reports.some(r => r.id === id), 'not listed');
+if (bundleLink) assert.equal((await fetch(bundleLink)).status, 404, 'its download link is dead');
+assert.equal((await del(`/${id}`)).status, 404, 'deleting twice: not found');
+const noTty = spawnSync(process.execPath, [script, 'delete', id],
+  { env: { ...process.env, V5SIM_FEEDBACK_URL: base, V5SIM_FEEDBACK_TOKEN: token }, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
+assert.equal(noTty.status, 2, 'without a terminal it needs --yes');
+console.log('delete ok');
+
 console.log('ALL OK');

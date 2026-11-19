@@ -120,6 +120,22 @@ async function download(request: Request, env: Env, rest: string): Promise<Respo
   } });
 }
 
+const REPORT_ID = /^\/(\d{4}-\d{2}-\d{2}\/[0-9a-f-]{36})$/;
+
+/** DELETE /admin/reports/<day>/<uuid>: a report and its bundle, for good
+ *  (a deletion request). Its download links stop working with it; a copy
+ *  forwarded to Sentry's User Feedback has to be deleted there. */
+async function deleteReport(env: Env, rest: string): Promise<Response> {
+  const m = REPORT_ID.exec(rest);
+  if (!m) return fail(404, 'not found');
+  const keys = [`reports/${m[1]}/report.json`, `reports/${m[1]}/bundle.zip`];
+  const found = (await Promise.all(keys.map(k => env.REPORTS.head(k)))).map((o, i) => (o ? keys[i] : undefined))
+    .filter((k): k is string => !!k);
+  if (!found.length) return fail(404, 'not found');
+  await env.REPORTS.delete(found);
+  return json(200, { ok: true, deleted: found.map(k => k.slice('reports/'.length)) });
+}
+
 /** Constant-time compare, so the token can't be guessed byte by byte. */
 function sameToken(given: string, want: string): boolean {
   const a = new TextEncoder().encode(given);
@@ -132,7 +148,8 @@ function sameToken(given: string, want: string): boolean {
 async function admin(request: Request, env: Env, rest: string): Promise<Response> {
   const auth = request.headers.get('authorization') ?? '';
   if (!env.ADMIN_TOKEN || !sameToken(auth, `Bearer ${env.ADMIN_TOKEN}`)) return fail(401, 'unauthorized');
-  if (request.method !== 'GET') return fail(405, 'GET only');
+  if (request.method === 'DELETE') return await deleteReport(env, rest);
+  if (request.method !== 'GET') return fail(405, 'GET or DELETE only');
   const url = new URL(request.url);
   if (rest === '' || rest === '/') {
     const listed = await env.REPORTS.list({
