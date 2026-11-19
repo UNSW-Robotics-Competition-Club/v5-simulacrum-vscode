@@ -106,6 +106,9 @@ test('createSentry sends a captured error to the DSN\'s project', async () => {
   assert.equal(ev.exception.values[0].value, 'VEXos download failed');
   assert.ok(ev.exception.values[0].stacktrace.frames.length > 0, 'has a stack');
   assert.equal(ev.server_name, undefined);
+  // Sentry shows the SDK as <invalid> without these
+  assert.equal(ev.sdk.name, 'sentry.javascript.core');
+  assert.match(ev.sdk.version, /^\d+\.\d+\.\d+/);
   await sentry.close(1000);
 });
 
@@ -155,5 +158,10 @@ test('another extension\'s Sentry scopes do not get into our events', async () =
   assert.ok(!/secret|someone@/.test(text), text);
   assert.equal(sent[0].items[2].tags.stage, 'setup');
   assert.equal(sent[0].items[2].extra.log, 'l');
+  // the client adds its SDK info (name, version, packages) after beforeSend: nothing else
+  const sdk = sent[0].items[2].sdk;
+  assert.equal(sdk.name, 'sentry.javascript.core');
+  assert.ok(Object.keys(sdk).every(k => ['name', 'version', 'integrations', 'packages'].includes(k)), JSON.stringify(sdk));
+  assert.ok(sdk.packages.every((p: { name: string }) => p.name.startsWith('npm:@sentry/')), JSON.stringify(sdk));
   await sentry.close(1000);
 });

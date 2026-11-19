@@ -5,6 +5,7 @@
 // the package by scripts/bundle-sentry.mjs).
 import {
   Scope,
+  applySdkMetadata,
   createStackParser,
   createTransport,
   dedupeIntegration,
@@ -59,7 +60,7 @@ function fetchTransport(fetchFn: typeof fetch) {
 }
 
 export function createSentry(o: SentryOptions): SentryReporter {
-  const client = new ServerRuntimeClient({
+  const options = {
     dsn: o.dsn,
     release: o.release,
     environment: o.environment,
@@ -72,8 +73,12 @@ export function createSentry(o: SentryOptions): SentryReporter {
     stackParser: createStackParser(nodeStackLineParser()),
     integrations: [dedupeIntegration(), linkedErrorsIntegration()],
     transport: fetchTransport(o.fetchFn ?? fetch) as never,
-    beforeSend: event => o.beforeSend(event),
-  });
+    beforeSend: (event: ErrorEvent) => o.beforeSend(event),
+  };
+  // the SDK name and version on every event, as Sentry.init would set them
+  // (without them Sentry shows the event's SDK as <invalid>)
+  applySdkMetadata(options, 'core');
+  const client = new ServerRuntimeClient(options);
   client.init();
   const scope = new Scope();
   scope.setClient(client);

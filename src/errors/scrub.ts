@@ -56,7 +56,7 @@ export function scrubEvent(event: ErrorEvent, o: ScrubOptions): ErrorEvent {
     level: event.level,
     release: event.release,
     environment: event.environment,
-    sdk: event.sdk && { name: event.sdk.name, version: event.sdk.version },
+    sdk: event.sdk?.name && event.sdk.version ? { name: event.sdk.name, version: event.sdk.version } : undefined,
     fingerprint: event.fingerprint,
     tags: pick(event.tags, OUR_TAGS) as ErrorEvent['tags'],
     extra: pick(event.extra, OUR_EXTRAS),
