@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.14 (beta)
+
+- **Closing a pane while the simulator starts** no longer reports an error ("Webview is disposed").
+
 ## 0.3.13 (beta)
 
 - **Report a Problem** (V5 Sim menu, sidebar, Command Palette): a form for a bug, idea or question that goes straight to the maintainers, no GitHub account needed. Optionally attaches the V5 Sim log and your setup (home folder and user name taken out) and your project folder (listed before sending; build output, Git data and possible secrets left out). Offline, it saves a zip and opens a prefilled GitHub issue instead.
