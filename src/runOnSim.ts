@@ -5,7 +5,7 @@
 import * as vscode from 'vscode';
 
 import { buildAction, isProgramBuild } from './buildWatch';
-import { Program, describe, project, projectRoot } from './programs';
+import { Program, describe, isVexideCargo, project, projectRoot } from './programs';
 import { diskFs, runOn, vexSdkRoot } from './runProgram';
 import { isMac, isWindows, usbipExe } from './runner';
 import { cfg, slotSetting } from './settings';
@@ -26,7 +26,7 @@ export function initRunOnSim(context: vscode.ExtensionContext, sim: SimInstance,
   if (isMac) {
     const button = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 49);
     button.text = '$(run) Run on Sim';
-    button.tooltip = "Install and run a program on the simulated brain: a .bin, a PROS project (hot/cold too), a VEXcode Python project. On a Mac, VEXcode's Download button can't see the simulator.";
+    button.tooltip = "Install and run a program on the simulated brain: a .bin, a PROS project (hot/cold too), a VEXcode Python project, a Rust (vexide) project. On a Mac, VEXcode's Download button can't see the simulator.";
     button.command = 'v5sim.runProgram';
     button.show();
     context.subscriptions.push(button);
@@ -50,16 +50,21 @@ export function initRunOnSim(context: vscode.ExtensionContext, sim: SimInstance,
       void reporting('run-on-sim', "Couldn't run the new build on the simulator", () => offerBuild(sim, file, root));
     }, SETTLE_MS));
   };
-  const watcher = vscode.workspace.createFileSystemWatcher('**/{build,bin}/*.bin');
-  log?.appendLine('[v5sim] watching for builds (build/*.bin, bin/*.bin) to offer Run on Sim');
-  context.subscriptions.push(watcher, watcher.onDidCreate(built), watcher.onDidChange(built),
-    { dispose: () => timers.forEach(t => clearTimeout(t)) });
+  // VEXcode and PROS builds; cargo-v5's (Rust) in target/<triple>/<profile>/
+  const watchers = ['**/{build,bin}/*.bin', '**/target/*-vex-v5/*/*.bin'].map(g => vscode.workspace.createFileSystemWatcher(g));
+  log?.appendLine('[v5sim] watching for builds (build/*.bin, bin/*.bin, target/*-vex-v5/*/*.bin) to offer Run on Sim');
+  for (const w of watchers) context.subscriptions.push(w, w.onDidCreate(built), w.onDidChange(built));
+  context.subscriptions.push({ dispose: () => timers.forEach(t => clearTimeout(t)) });
 }
 
-/** v5sim.vexProject: a VEXcode project is open (its editor-title button). */
+/** v5sim.vexProject / v5sim.rustProject: a VEXcode or vexide project is
+ *  open (the editor-title Run on Sim button). */
 async function markVexProject(): Promise<void> {
   const found = await vscode.workspace.findFiles('**/.vscode/vex_project_settings.json', '**/node_modules/**', 1);
   await vscode.commands.executeCommand('setContext', 'v5sim.vexProject', found.length > 0);
+  const cargo = await vscode.workspace.findFiles('**/Cargo.toml', '**/{node_modules,target}/**', 20);
+  const rust = cargo.some(u => isVexideCargo(diskFs.read(u.fsPath) ?? ''));
+  await vscode.commands.executeCommand('setContext', 'v5sim.rustProject', rust);
 }
 
 /** A build just wrote a program: run it on the sim, or offer to. In a PROS

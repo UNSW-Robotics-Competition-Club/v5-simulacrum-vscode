@@ -155,7 +155,7 @@
         },
         {
           "command": "v5sim.runEditorProgram",
-          "when": "isMac && v5sim.vexProject",
+          "when": "isMac && (v5sim.vexProject || v5sim.rustProject)",
           "group": "navigation"
         }
       ],

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import * as path from 'node:path';
 import { test } from 'node:test';
 
-import { Fs, Project, compareVersions, programForEditor, programForFile, project, projectRoot, prosProject, pythonVm, vexProject } from '../src/programs';
+import { Fs, Project, cargoProject, compareVersions, readCargo, programForEditor, programForFile, project, projectRoot, prosProject, pythonVm, vexProject } from '../src/programs';
 
 /** A fake file system: path -> [mtime, contents]; folders are implied. */
 function fakeFs(files: Record<string, [number, string?]>): Fs {
@@ -138,4 +138,84 @@ test('a chosen file runs as its project\'s program, as itself, or not at all', (
     assert.equal(r.program, undefined, f);
     assert.match(r.problem!, /isn't a V5 program/, f);
   }
+});
+
+const cargoToml = (extra = '') => `[package]
+name = "my-robot"   # a comment
+version = "0.1.0"
+
+[package.metadata.v5]
+upload-strategy = "differential"
+slot = 3
+icon = "cool-x"
+
+[dependencies]
+vexide = { version = "0.8.0", features = ["full"] }
+${extra}`;
+
+test('Cargo.toml: package name, v5 slot, dependencies (inline and table forms)', () => {
+  const c = readCargo(cargoToml('v5gdb = "0.1"\n'));
+  assert.equal(c.name, 'my-robot');
+  assert.equal(c.slot, 3);
+  assert.equal(c.v5Metadata, true);
+  assert.ok(c.dependencies.has('vexide'));
+  assert.ok(c.dependencies.has('v5gdb'));
+  const table = readCargo('[package]\nname = \'bot\'\n\n[dependencies.vexide]\nversion = "0.9"\n');
+  assert.equal(table.name, 'bot');
+  assert.ok(table.dependencies.has('vexide'));
+  assert.equal(table.v5Metadata, false);
+  assert.equal(readCargo('[package]\nname = "x"\n[package.metadata.v5]\nslot = 12\n').slot, undefined);
+  assert.equal(readCargo('[workspace]\nmembers = ["a"]\n').workspace, true);
+  assert.equal(readCargo('[package]\r\nname = "crlf"\r\n').name, 'crlf');
+});
+
+test('Rust: a vexide project runs its newest build, either target, either profile', () => {
+  const r = path.join('w', 'robot');
+  const t = (triple: string, profile: string, f: string) => path.join(r, 'target', triple, profile, f);
+  const fs = fakeFs({
+    [path.join(r, 'Cargo.toml')]: [1, cargoToml()],
+    [t('thumbv7a-vex-v5', 'debug', 'my-robot.bin')]: [10],
+    [t('thumbv7a-vex-v5', 'debug', 'my-robot')]: [10],
+    [t('armv7a-vex-v5', 'release', 'my_robot.bin')]: [30],
+    [t('thumbv7a-vex-v5', 'debug', 'slot_3.base.bin')]: [40],
+  });
+  const p = cargoProject(r, fs)!;
+  assert.equal(p.label, 'Rust project my-robot');
+  assert.equal(p.slot, 3);
+  assert.deepEqual(p.program, { kind: 'bin', file: t('armv7a-vex-v5', 'release', 'my_robot.bin') });
+
+  const debugOnly = fakeFs({
+    [path.join(r, 'Cargo.toml')]: [1, cargoToml()],
+    [t('thumbv7a-vex-v5', 'debug', 'my-robot.bin')]: [10],
+    [t('thumbv7a-vex-v5', 'debug', 'my-robot')]: [10],
+  });
+  assert.deepEqual(cargoProject(r, debugOnly)!.program,
+    { kind: 'bin', file: t('thumbv7a-vex-v5', 'debug', 'my-robot.bin'), elf: t('thumbv7a-vex-v5', 'debug', 'my-robot') });
+});
+
+test('Rust: no build yet, a workspace, and Cargo projects that are not vexide', () => {
+  const r = path.join('w', 'robot');
+  const none = cargoProject(r, fakeFs({ [path.join(r, 'Cargo.toml')]: [1, cargoToml()] }))!;
+  assert.equal(none.program, undefined);
+  assert.match(none.problem!, /cargo v5 build/);
+  const ws = cargoProject(r, fakeFs({ [path.join(r, 'Cargo.toml')]: [1, '[workspace]\nmembers = ["robot"]\n[workspace.dependencies]\nvexide = "0.8"\n'] }))!;
+  assert.match(ws.problem!, /workspace/);
+  assert.equal(cargoProject(r, fakeFs({ [path.join(r, 'Cargo.toml')]: [1, '[package]\nname = "cli"\n[dependencies]\nserde = "1"\n'] })), undefined);
+  // v5 metadata alone marks it (a vexide crate under another name)
+  assert.ok(cargoProject(r, fakeFs({ [path.join(r, 'Cargo.toml')]: [1, '[package]\nname = "x"\n[package.metadata.v5]\nslot = 1\n'] })));
+  // through project(), after PROS and VEXcode
+  assert.equal(project(r, fakeFs({ [path.join(r, 'Cargo.toml')]: [1, cargoToml()] }), undefined)?.label, 'Rust project my-robot');
+});
+
+test('a Rust file\'s project: the folder with a vexide Cargo.toml above it', () => {
+  const r = path.join('w', 'robot');
+  const fs = fakeFs({ [path.join(r, 'Cargo.toml')]: [1, cargoToml()], [path.join('w', 'Cargo.toml')]: [1, '[package]\nname = "tool"\n'] });
+  assert.equal(projectRoot(path.join(r, 'src', 'main.rs'), fs), r);
+  assert.equal(projectRoot(path.join(r, 'target', 'thumbv7a-vex-v5', 'debug', 'my-robot.bin'), fs), r);
+  assert.equal(projectRoot(path.join('w', 'other', 'main.rs'), fs), undefined);   // w's Cargo.toml isn't vexide
+});
+
+test('a differential upload\'s base binary is not run on its own', () => {
+  const f = path.join('w', 'robot', 'target', 'thumbv7a-vex-v5', 'release', 'slot_1.base.bin');
+  assert.match(programForFile(f, undefined, undefined).problem!, /base/);
 });

@@ -6,7 +6,7 @@
 import * as path from 'node:path';
 
 export type Program =
-  | { kind: 'bin'; file: string }
+  | { kind: 'bin'; file: string; elf?: string }                // elf: its symbols, when beside it (Rust)
   | { kind: 'hotcold'; file: string; link: string }          // hot.package.bin, cold.package.bin
   | { kind: 'python'; file: string; link: string };          // main.py, python_vm.bin
 
@@ -95,6 +95,97 @@ export function vexProject(root: string, fs: Fs, sdkRoot: string | undefined): P
   return { label, slot, program: { kind: 'bin', file: bins[0] } };
 }
 
+/** What this extension needs from a Cargo.toml. */
+export interface CargoManifest {
+  name?: string;
+  /** [package.metadata.v5] slot, when 1-8 */
+  slot?: number;
+  /** has a [package.metadata.v5] section (cargo-v5's settings) */
+  v5Metadata: boolean;
+  /** crate names in [dependencies] and [workspace.dependencies] */
+  dependencies: Set<string>;
+  workspace: boolean;
+}
+
+/** A small TOML reader for the keys above: [sections], key = value lines,
+ *  # comments. Not a TOML parser (no multi-line values, no inline tables
+ *  beyond reading a dependency's name). */
+export function readCargo(text: string): CargoManifest {
+  const out: CargoManifest = { v5Metadata: false, dependencies: new Set(), workspace: false };
+  let section = '';
+  for (const raw of text.split(/\r?\n/)) {
+    const line = stripTomlComment(raw).trim();
+    if (!line) continue;
+    const header = /^\[{1,2}\s*([^\]]+?)\s*\]{1,2}$/.exec(line);
+    if (header) {
+      section = line.startsWith('[[') ? '' : header[1];
+      if (section === 'package.metadata.v5') out.v5Metadata = true;
+      if (section === 'workspace') out.workspace = true;
+      const dep = /^(?:workspace\.)?dependencies\.(.+)$/.exec(section);
+      if (dep) out.dependencies.add(unquote(dep[1]));
+      continue;
+    }
+    const kv = /^("[^"]+"|'[^']+'|[A-Za-z0-9_.-]+)\s*=\s*(.*)$/.exec(line);
+    if (!kv) continue;
+    const key = unquote(kv[1]);
+    if (section === 'package' && key === 'name') out.name = unquote(kv[2]);
+    else if (section === 'package.metadata.v5' && key === 'slot') {
+      const n = Number(kv[2]);
+      if (Number.isInteger(n) && n >= 1 && n <= 8) out.slot = n;
+    } else if (section === 'dependencies' || section === 'workspace.dependencies') {
+      out.dependencies.add(key.split('.')[0]);
+    }
+  }
+  return out;
+}
+
+function stripTomlComment(line: string): string {
+  let quote = '';
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (quote) { if (c === quote) quote = ''; } else if (c === '"' || c === "'") quote = c; else if (c === '#') return line.slice(0, i);
+  }
+  return line;
+}
+
+function unquote(v: string): string {
+  const m = /^\s*(?:"([^"]*)"|'([^']*)')/.exec(v);
+  return m ? (m[1] ?? m[2]) : v.trim();
+}
+
+/** cargo-v5 builds for thumbv7a-vex-v5 unless the project picks
+ *  armv7a-vex-v5 (v5gdb's docs do). */
+const RUST_TRIPLES = ['thumbv7a-vex-v5', 'armv7a-vex-v5'];
+const RUST_PROFILES = ['debug', 'release'];
+
+const isVexideManifest = (c: CargoManifest) => c.dependencies.has('vexide') || c.v5Metadata;
+
+/** A Cargo.toml's text is a vexide project's (or workspace's). */
+export const isVexideCargo = (text: string) => isVexideManifest(readCargo(text));
+
+/** A vexide (Rust) project (a Cargo.toml using vexide, or with cargo-v5's
+ *  [package.metadata.v5]): its newest build, target/<triple>/<profile>/<name>.bin
+ *  (cargo-v5 writes it beside the ELF, which keeps the name without .bin). */
+export function cargoProject(root: string, fs: Fs): Project | undefined {
+  const text = fs.read(path.join(root, 'Cargo.toml'));
+  if (text === undefined) return undefined;
+  const c = readCargo(text);
+  if (!isVexideManifest(c)) return undefined;
+  if (!c.name) {
+    return { label: `Rust workspace ${path.basename(root)}`,
+      problem: "it's a Cargo workspace: open the robot's own folder (the one whose Cargo.toml has a [package])" };
+  }
+  const label = `Rust project ${c.name}`;
+  const names = [...new Set([c.name, c.name.replace(/-/g, '_')])];
+  const bins = RUST_TRIPLES.flatMap(t => RUST_PROFILES.flatMap(p => names.map(n => path.join(root, 'target', t, p, `${n}.bin`))))
+    .filter(f => fs.exists(f))
+    .sort((a, b) => fs.mtime(b) - fs.mtime(a));
+  if (!bins.length) return { label, slot: c.slot, problem: 'it has no build yet: build it first (cargo v5 build)' };
+  const file = bins[0];
+  const elf = file.slice(0, -'.bin'.length);
+  return { label, slot: c.slot, program: fs.exists(elf) ? { kind: 'bin', file, elf } : { kind: 'bin', file } };
+}
+
 /** VEX's V5 MicroPython VM: the project's SDK version, else the newest. */
 export function pythonVm(sdkRoot: string, sdkVersion: string | undefined, fs: Fs): string | undefined {
   const v5 = path.join(sdkRoot, 'V5');
@@ -115,14 +206,17 @@ export function compareVersions(a: string, b: string): number {
   return 0;
 }
 
-/** The project a file belongs to: the folder holding project.pros or
- *  .vscode/vex_project_settings.json, at or above the file (up to 3 up). */
+/** The project a file belongs to: the folder holding project.pros,
+ *  .vscode/vex_project_settings.json or a vexide Cargo.toml, at or above
+ *  the file (up to 3 up). */
 export function projectRoot(file: string, fs: Fs): string | undefined {
   let dir = path.dirname(file);
   for (let i = 0; i < 4; i++) {
     if (fs.exists(path.join(dir, 'project.pros')) || fs.exists(path.join(dir, '.vscode', 'vex_project_settings.json'))) {
       return dir;
     }
+    const cargo = fs.read(path.join(dir, 'Cargo.toml'));
+    if (cargo !== undefined && isVexideManifest(readCargo(cargo))) return dir;
     const up = path.dirname(dir);
     if (up === dir) break;
     dir = up;
@@ -130,9 +224,9 @@ export function projectRoot(file: string, fs: Fs): string | undefined {
   return undefined;
 }
 
-/** The project at root, PROS or VEXcode. */
+/** The project at root: PROS, VEXcode or vexide (Rust). */
 export function project(root: string, fs: Fs, sdkRoot: string | undefined): Project | undefined {
-  return prosProject(root, fs) ?? vexProject(root, fs, sdkRoot);
+  return prosProject(root, fs) ?? vexProject(root, fs, sdkRoot) ?? cargoProject(root, fs);
 }
 
 /** A one-word description for messages. */
@@ -154,6 +248,9 @@ export function programForFile(file: string, proj: Project | undefined, pythonVm
   if (p && (p.file === file || ('link' in p && p.link === file))) return { program: p, slot: proj!.slot };
   if (base === 'hot.package.bin' || base === 'cold.package.bin') {
     return { problem: `${path.basename(file)} is half of a PROS hot/cold program: run its project's build` };
+  }
+  if (/^slot_\d+\.base\.bin$/.test(base)) {
+    return { problem: `${path.basename(file)} is the base of a cargo-v5 differential upload, not a program: run its project's build` };
   }
   if (base.endsWith('.py')) {
     return pythonVmFile ? { program: { kind: 'python', file, link: pythonVmFile }, slot: proj?.slot }

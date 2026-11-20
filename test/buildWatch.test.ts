@@ -23,3 +23,11 @@ test('a new build: ask by default, run when always, nothing when never or on Win
   assert.equal(buildAction('always', { isMac: false, windowsUsb: true }), 'none');
   assert.equal(buildAction('ask', { isMac: false, windowsUsb: false }), 'ask');  // Windows without the driver
 });
+
+test('a Rust build program is target/<v5 triple>/<profile>/<name>.bin, not a differential base', () => {
+  assert.equal(isProgramBuild('/Users/me/bot/target/thumbv7a-vex-v5/release/bot.bin'), true);
+  assert.equal(isProgramBuild('C:\\me\\bot\\target\\armv7a-vex-v5\\debug\\my_bot.bin'), true);
+  assert.equal(isProgramBuild('/Users/me/bot/target/thumbv7a-vex-v5/release/slot_1.base.bin'), false);
+  assert.equal(isProgramBuild('/Users/me/bot/target/x86_64-pc-windows-msvc/release/bot.bin'), false);
+  assert.equal(isProgramBuild('/Users/me/bot/target/thumbv7a-vex-v5/release/deps/bot.bin'), false);
+});

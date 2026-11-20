@@ -4,13 +4,19 @@
 /** v5sim.runOnBuild */
 export type RunOnBuild = 'ask' | 'always' | 'never';
 
-/** A build's program: VEXcode's build/<project>.bin or PROS's bin/monolith.bin
+/** A build's program: VEXcode's build/<project>.bin, PROS's bin/monolith.bin or cargo-v5's target/<triple>/<profile>/<name>.bin
  *  (not PROS's hot/cold halves, which only run together). */
 export function isProgramBuild(file: string): boolean {
   const parts = file.split(/[\\/]/);
   const name = parts[parts.length - 1] ?? '';
   const folder = parts[parts.length - 2] ?? '';
-  return /\.bin$/i.test(name) && /^(build|bin)$/i.test(folder) && !/(^|[._-])(hot|cold)([._-]|$)/i.test(name);
+  if (!/\.bin$/i.test(name)) return false;
+  // cargo-v5: target/<*-vex-v5>/<profile>/<name>.bin, beside a differential
+  // upload's slot_N.base.bin (not a program)
+  if (/-vex-v5$/i.test(parts[parts.length - 3] ?? '') && /^target$/i.test(parts[parts.length - 4] ?? '')) {
+    return !/^slot_\d+\.base\.bin$/i.test(name);
+  }
+  return /^(build|bin)$/i.test(folder) && !/(^|[._-])(hot|cold)([._-]|$)/i.test(name);
 }
 
 export interface Host {
