@@ -6,12 +6,14 @@ import { PortsPanel } from './panels/portsPanel';
 import { Page, WebPanel } from './panels/webPanel';
 import { initPrograms, programTerminal, runEditorProgram, runProgram } from './runProgram';
 import { initRunOnSim } from './runOnSim';
+import { initDebug } from './debug/debugOnSim';
+import { vexcodePortNote } from './portNote';
 import { quietWhenClosed } from './safeLog';
 import { initRuntime, simRunner } from './runtime';
 import { cfg } from './settings';
 import { SimInstance } from './simInstance';
 import { initUsbDriver, installUsbDriver } from './usbDriver';
-import { initErrorReporting, reporting } from './errors/errorReporting';
+import { endErrorReportingSession, initErrorReporting, reporting } from './errors/errorReporting';
 
 let sim: SimInstance | undefined;
 
@@ -115,8 +117,9 @@ export function activate(context: vscode.ExtensionContext): void {
     context.subscriptions.push(vscode.commands.registerCommand(id, fn));
   }
   context.subscriptions.push(log, status, s);
-  initPrograms(context);
+  initPrograms(context, log);
   initRunOnSim(context, s, log);
+  initDebug(context, s, log);
 
   // the activity-bar view: its welcome content holds the buttons
   context.subscriptions.push(vscode.window.registerTreeDataProvider('v5sim.home', {
@@ -132,10 +135,16 @@ export function activate(context: vscode.ExtensionContext): void {
       'Start', 'Later').then(pick => {
       if (pick === 'Start') void vscode.commands.executeCommand('v5sim.start');
     });
+  } else {
+    void vexcodePortNote(context);      // not with the welcome: one message at a time
   }
 }
 
 /** VS Code is closing: stop our simulator gracefully (never killed). */
 export async function deactivate(): Promise<void> {
-  if (sim?.owned) await sim.stop();
+  try {
+    if (sim?.owned) await sim.stop();
+  } finally {
+    await endErrorReportingSession();
+  }
 }

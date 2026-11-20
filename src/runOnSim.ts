@@ -5,12 +5,13 @@
 import * as vscode from 'vscode';
 
 import { buildAction, isProgramBuild } from './buildWatch';
-import { Program, describe, project, projectRoot } from './programs';
+import { Program, describe, isVexideCargo, project, projectRoot } from './programs';
 import { diskFs, runOn, vexSdkRoot } from './runProgram';
 import { isMac, isWindows, usbipExe } from './runner';
 import { cfg, slotSetting } from './settings';
 import { SimInstance } from './simInstance';
 import { reporting } from './errors/errorReporting';
+import { buildingHere } from './buildFirst';
 
 const TIP_KEY = 'v5sim.macRunTipShown';
 /** A build writes its .bin more than once: offer once it has settled. */
@@ -26,7 +27,7 @@ export function initRunOnSim(context: vscode.ExtensionContext, sim: SimInstance,
   if (isMac) {
     const button = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 49);
     button.text = '$(run) Run on Sim';
-    button.tooltip = "Install and run a program on the simulated brain: a .bin, a PROS project (hot/cold too), a VEXcode Python project. On a Mac, VEXcode's Download button can't see the simulator.";
+    button.tooltip = "Install and run a program on the simulated brain: a .bin, a PROS project (hot/cold too), a VEXcode Python project, a Rust (vexide) project. On a Mac, VEXcode's Download button can't see the simulator.";
     button.command = 'v5sim.runProgram';
     button.show();
     context.subscriptions.push(button);
@@ -40,26 +41,37 @@ export function initRunOnSim(context: vscode.ExtensionContext, sim: SimInstance,
   const timers = new Map<string, ReturnType<typeof setTimeout>>();
   const built = (uri: vscode.Uri) => {
     const file = uri.fsPath;
+    if (/slot_\d+\.base\.bin$/i.test(file)) return;           // cargo-v5's differential base
     const root = projectRoot(file, diskFs);
     if (!root && !isProgramBuild(file)) return;
     const key = root ?? file;
     clearTimeout(timers.get(key));
     timers.set(key, setTimeout(() => {
       timers.delete(key);
+      if (root && buildingHere(root)) return;      // "Build and run" built it and runs it
       log?.appendLine(`[v5sim] new build: ${file}`);
       void reporting('run-on-sim', "Couldn't run the new build on the simulator", () => offerBuild(sim, file, root));
     }, SETTLE_MS));
   };
-  const watcher = vscode.workspace.createFileSystemWatcher('**/{build,bin}/*.bin');
-  log?.appendLine('[v5sim] watching for builds (build/*.bin, bin/*.bin) to offer Run on Sim');
-  context.subscriptions.push(watcher, watcher.onDidCreate(built), watcher.onDidChange(built),
-    { dispose: () => timers.forEach(t => clearTimeout(t)) });
+  // VEXcode and PROS builds; cargo-v5's (Rust) in target/<triple>/<profile>/
+  const watchers = ['**/{build,bin}/*.bin', '**/target/*-vex-v5/*/*.bin'].map(g => vscode.workspace.createFileSystemWatcher(g));
+  log?.appendLine('[v5sim] watching for builds (build/*.bin, bin/*.bin, target/*-vex-v5/*/*.bin) to offer Run on Sim');
+  for (const w of watchers) context.subscriptions.push(w, w.onDidCreate(built), w.onDidChange(built));
+  context.subscriptions.push({ dispose: () => timers.forEach(t => clearTimeout(t)) });
+  // a Cargo.toml created or edited later (cargo new, adding vexide)
+  const cargo = vscode.workspace.createFileSystemWatcher('**/Cargo.toml');
+  context.subscriptions.push(cargo, cargo.onDidCreate(() => void markVexProject()), cargo.onDidChange(() => void markVexProject()),
+    cargo.onDidDelete(() => void markVexProject()));
 }
 
-/** v5sim.vexProject: a VEXcode project is open (its editor-title button). */
+/** v5sim.vexProject / v5sim.rustProject: a VEXcode or vexide project is
+ *  open (the editor-title Run on Sim button). */
 async function markVexProject(): Promise<void> {
   const found = await vscode.workspace.findFiles('**/.vscode/vex_project_settings.json', '**/node_modules/**', 1);
   await vscode.commands.executeCommand('setContext', 'v5sim.vexProject', found.length > 0);
+  const cargo = await vscode.workspace.findFiles('**/Cargo.toml', '**/{node_modules,target}/**', 100);
+  const rust = cargo.some(u => isVexideCargo(diskFs.read(u.fsPath) ?? ''));
+  await vscode.commands.executeCommand('setContext', 'v5sim.rustProject', rust);
 }
 
 /** A build just wrote a program: run it on the sim, or offer to. In a PROS
@@ -125,7 +137,7 @@ let queued: (() => Promise<void>) | undefined;
  *  any other waiting, so only the newest runs next (no overlapping
  *  restarts, no "already starting"). */
 function runNewest(sim: SimInstance, program: Program, slot: number): Promise<void> {
-  const go = () => runOn(sim, program, slot);
+  const go = () => runOn(sim, program, slot, { fresh: true });   // just built: no out-of-date warning
   if (running) {
     queued = go;
     return running;

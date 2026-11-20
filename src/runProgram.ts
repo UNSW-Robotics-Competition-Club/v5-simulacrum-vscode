@@ -8,13 +8,15 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 
-import { FileProgram, Fs, Program, Project, describe, programForEditor, programForFile, project, projectRoot, pythonVm } from './programs';
+import { FileProgram, Fs, Program, Project, describe, isVexideCargo, programForEditor, programForFile, project, projectRoot, pythonVm } from './programs';
 import { isWindows, onPath, sh, terminalEnv } from './runner';
 import { installUsbDriver } from './usbDriver';
+import { upToDate } from './buildFirst';
+import { runOnRunning } from './liveUpload';
 import { slotSetting } from './settings';
 import { Running, SimInstance } from './simInstance';
 
-type Pick = vscode.QuickPickItem & { action: 'program' | 'pros' | 'browse'; program?: Program; slot?: number };
+type Pick = vscode.QuickPickItem & { action: 'program' | 'pros' | 'cargo' | 'browse'; program?: Program; slot?: number };
 
 /** The disk, for programs.ts. */
 export const diskFs: Fs = {
@@ -26,8 +28,10 @@ export const diskFs: Fs = {
 
 /** The VEXcode extension's Python SDK (VEX's VM is in it), next to ours. */
 let vexSdk: string | undefined;
-export function initPrograms(context: vscode.ExtensionContext): void {
+let runLog: vscode.OutputChannel | undefined;
+export function initPrograms(context: vscode.ExtensionContext, log: vscode.OutputChannel): void {
   vexSdk = path.join(path.dirname(context.globalStorageUri.fsPath), 'vexrobotics.vexcode', 'sdk', 'python');
+  runLog = log;
 }
 export const vexSdkRoot = () => vexSdk;
 
@@ -82,6 +86,12 @@ export async function runProgram(sim: SimInstance, given?: string): Promise<void
     picks.push({ label: '$(cloud-upload) Upload this PROS project with the PROS CLI', action: 'pros',
       description: 'pros upload to the sim\'s serial port' });
   }
+  // cargo-v5 finds a brain by its USB IDs (it takes no port): Windows USB only
+  const rustProject = !!folder && isVexideCargo(diskFs.read(path.join(folder, 'Cargo.toml')) ?? '');
+  if (rustProject && isWindows && await onPath('cargo-v5')) {
+    picks.push({ label: '$(cloud-upload) Upload this Rust project with cargo v5', action: 'cargo',
+      description: 'cargo v5 upload to the sim on Windows USB' });
+  }
   const shown = new Set(picks.flatMap(p => p.program ? [p.program.file] : []));
   const bins = await vscode.workspace.findFiles('{build,bin}/**/*.bin', '**/node_modules/**', 30);
   bins.sort((a, b) => mtime(b.fsPath) - mtime(a.fsPath));
@@ -103,6 +113,10 @@ export async function runProgram(sim: SimInstance, given?: string): Promise<void
     await prosUpload(sim, folder!, slot);
     return;
   }
+  if (pick.action === 'cargo') {
+    await cargoUpload(sim, folder!, slot);
+    return;
+  }
   let program = pick.program;
   if (pick.action === 'browse') {
     const uri = await vscode.window.showOpenDialog({ filters: { 'V5 program': ['bin', 'py'] },
@@ -115,9 +129,25 @@ export async function runProgram(sim: SimInstance, given?: string): Promise<void
   if (program) await runOn(sim, program, slot);
 }
 
-/** Install the program in slot and start it: the sim restarts with --run
- *  (and --link for a hot/cold pair or a Python program). */
-export async function runOn(sim: SimInstance, program: Program, slot: number): Promise<void> {
+/** Install the program in slot and start it: on the running simulator
+ *  without a restart (its upload socket), else by (re)starting it with
+ *  --run (and --link for a hot/cold pair or a Python program). A build
+ *  older than its source is warned about first, unless it was just built
+ *  (fresh: the after-build offer). */
+export async function runOn(sim: SimInstance, given: Program, slot: number, opts: { fresh?: boolean } = {}): Promise<void> {
+  const program = opts.fresh ? given : await upToDate(given, diskFs, vexSdk);
+  if (!program) return;
+  if (sim.state === 'running' && runLog) {
+    const live = await runOnRunning(sim, program, slot, runLog);
+    if (live === 'done') return;
+    if (live === 'failed') {
+      const restart = 'Restart with it', log = 'Show log';
+      const pick = await vscode.window.showWarningMessage(
+        `Couldn't install ${describe(program)} on the running simulator. Restart the simulator with it instead?`, restart, log);
+      if (pick === log) runLog.show(true);
+      if (pick !== restart) return;
+    }
+  }
   if (sim.state !== 'stopped' && !sim.owned) {
     const ok = await vscode.window.showWarningMessage(
       `Restart simulator instance ${sim.current?.id ?? ''} from VS Code to run ${describe(program)}?`,
@@ -165,24 +195,37 @@ function onWslSerial(target: Running): boolean {
   return isWindows && !!target.ttySys && target.usbipPort === undefined;
 }
 
+/** The brain is on WSL serial ports, so a Windows uploader can't reach it:
+ *  say so (and offer the USB driver). True when it said so. */
+async function refusedOnWslSerial(target: Running, tool: string): Promise<boolean> {
+  if (!onWslSerial(target)) return false;
+  const install = 'Install USB driver';
+  const pick = await vscode.window.showWarningMessage(
+    `The simulated brain isn't on Windows USB (its USB port is a WSL serial port), so ${tool} on Windows can't reach it. ` +
+    `Install the USB driver (usbip-win2) and restart the simulator, or run the project's build with "Run Program on Sim".`,
+    install);
+  if (pick === install) await installUsbDriver();
+  return true;
+}
+
 async function prosUpload(sim: SimInstance, folder: string, slot: number): Promise<void> {
   const target = await running(sim);
-  if (!target) return;
-  if (onWslSerial(target)) {
-    const install = 'Install USB driver';
-    const pick = await vscode.window.showWarningMessage(
-      "The simulated brain isn't on Windows USB (its USB port is a WSL serial port), so the PROS CLI on Windows can't reach it. " +
-      `Install the USB driver (usbip-win2) and restart the simulator, or run the project's build with "Run Program on Sim" (hot/cold too).`,
-      install);
-    if (pick === install) await installUsbDriver();
-    return;
-  }
+  if (!target || await refusedOnWslSerial(target, 'the PROS CLI')) return;
   // With usbip-win2 the sim is a USB brain on Windows and pros finds it;
   // otherwise name its serial port.
   const port = !isWindows && target.ttySys ? ` ${target.ttySys}` : '';
   const term = vscode.window.createTerminal({ name: `PROS upload (sim ${target.id})`, cwd: folder, env: terminalEnv() });
   term.show();
   term.sendText(`pros upload --slot ${slot} --after run .${port}`);
+}
+
+/** cargo v5 upload (it builds first) to the sim on Windows USB. */
+async function cargoUpload(sim: SimInstance, folder: string, slot: number): Promise<void> {
+  const target = await running(sim);
+  if (!target || await refusedOnWslSerial(target, 'cargo-v5')) return;
+  const term = vscode.window.createTerminal({ name: `cargo v5 upload (sim ${target.id})`, cwd: folder, env: terminalEnv() });
+  term.show();
+  term.sendText(`cargo v5 upload --slot ${slot} --after run`);
 }
 
 /** The program's output: pros terminal (or screen) on the sim's user port. */

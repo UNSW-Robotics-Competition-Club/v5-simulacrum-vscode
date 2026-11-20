@@ -202,3 +202,45 @@ test('scrubStack output survives scrubEvent unchanged (frames already app:///)',
   assert.deepEqual(JSON.parse(JSON.stringify(e.exception!.values![0].stacktrace!.frames![0])),
     { function: 'start', filename: 'app:///out/src/simInstance.js', lineno: 1, colno: 2, in_app: true });
 });
+
+/** The session items a fake Sentry was sent, in order. */
+const sessions = (sent: { items: any[] }[]) =>
+  sent.flatMap(r => (r.items[1]?.type === 'session' ? [r.items[2]] : []));
+
+test('startSession sends a session for the release, with the anonymous install id and nothing else about the computer', async () => {
+  const { sentry, sent } = fakeSentry();
+  sentry.startSession('a'.repeat(32));
+  await sentry.flush(2000);
+  const [s] = sessions(sent);
+  assert.equal(s.did, 'a'.repeat(32));
+  assert.equal(s.init, true);
+  assert.equal(s.status, 'ok');
+  assert.deepEqual(s.attrs, { release: 'v5sim-vscode@1.2.3', environment: 'test' });
+  await sentry.close(1000);
+});
+
+test('an error during a session marks it errored; endSession sends it exited', async () => {
+  const { sentry, sent } = fakeSentry();
+  sentry.startSession('b'.repeat(32));
+  sentry.capture(new Error('start failed'));
+  await sentry.flush(2000);
+  sentry.endSession();
+  await sentry.flush(2000);
+  const s = sessions(sent);
+  assert.equal(s.length, 3);
+  assert.equal(s[1].errors, 1);
+  assert.equal(s[1].init, false);
+  assert.equal(s[2].status, 'exited');
+  assert.equal(s[2].errors, 1);
+  await sentry.close(1000);
+});
+
+test('without a session, errors send no session and endSession does nothing', async () => {
+  const { sentry, sent } = fakeSentry();
+  sentry.capture(new Error('x'));
+  sentry.endSession();
+  await sentry.flush(2000);
+  assert.equal(sessions(sent).length, 0);
+  assert.equal(sent.length, 1);
+  await sentry.close(1000);
+});
