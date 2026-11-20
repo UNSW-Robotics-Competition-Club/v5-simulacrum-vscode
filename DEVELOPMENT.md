@@ -30,6 +30,14 @@ The extension unpacks the runtime once per version into `~/.v5-simulacrum/runtim
 
 A clone of v5-simulacrum set up with its `scripts/setup.sh` takes over from the bundled simulator when it's a workspace folder, next to one (`../v5-simulacrum`), in your home folder (`~/v5-simulacrum`), or set in `v5sim.repoPath` (its Windows path on Windows). The runtime-free `.vsix` from the **package** workflow only works that way. Panes also attach to a simulator started outside VS Code (`V5Sim start`, `./v5sim start`): with none started from VS Code, the open commands list the running instances.
 
+## Run on Sim and Debug on Sim
+
+Both need a simulator from v5-simulacrum's `main` at or after its live-upload change (the bundle workflow builds the runtime from `main`, so merge the simulator first). An older simulator gets a restart with `--run` instead, and Debug on Sim says it has no debugger bridge.
+
+- **Run on Sim without a restart.** Every `v5brain.sh` start puts `scripts/v5usb_share.py` on the brain's USB system port and prints `upload <socket>` on its instance line. `src/liveUpload.ts` runs `scripts/v5upload.py <socket> <file> --slot N [--link LIB]` through the Runner (in WSL on Windows): VEXos's file transfer, as PROS and vexcom do it, ending with "run". Uploads go one at a time. Exit status 3 (nothing at the socket) falls back to the restart.
+- **Debug on Sim.** `v5brain.sh --gdb auto` starts `scripts/v5gdb_bridge.py` on the brain's user port: GDB on `127.0.0.1:35537+2N`, the program's output as text on the next port. WSL2 forwards those ports to Windows. `src/debug/debugOnSim.ts` gets the program onto such a simulator, waits for it to start (`[v5brain] started slot`), and returns a `cppdbg` configuration from the `v5sim` debug type's resolver. VS Code then resolves that as `cppdbg` (it re-resolves a configuration whose type changed), so the extension needs no debug adapter of its own.
+- **Testing.** `npm test` covers the pure parts (`programs.ts`, `debug/debugTarget.ts`, `debug/v5gdbSetup.ts`). In the simulator: `sim/tests/test_v5upload.py`, `test_v5gdb_bridge.py` and `scripts/live_upload_test.sh` (set `V5SIM_HOTCOLD` to a built PROS project for hot/cold). A GDB session needs a program built with v5gdb (vexide ≥ 0.9.0-alpha.1 or PROS kernel ≥ 4.2.3): start it with `--gdb auto`, then `arm-none-eabi-gdb <elf> -ex "target remote :35537"`.
+
 ## Windows USB
 
 The simulator serves its brain's USB as a USB/IP device on `localhost:3300+N` (`scripts/v5usb_usbip.py`, one client at a time: a second import is refused as busy). `v5brain.sh --usbip` attaches it with usbip-win2's `usbip.exe attach --once`, run from WSL.

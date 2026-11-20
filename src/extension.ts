@@ -7,6 +7,7 @@ import { Page, WebPanel } from './panels/webPanel';
 import { initPrograms, programTerminal, runEditorProgram, runProgram } from './runProgram';
 import { initRunOnSim } from './runOnSim';
 import { initDebug } from './debug/debugOnSim';
+import { vexcodePortNote } from './portNote';
 import { quietWhenClosed } from './safeLog';
 import { initRuntime, simRunner } from './runtime';
 import { cfg } from './settings';
@@ -134,6 +135,8 @@ export function activate(context: vscode.ExtensionContext): void {
       'Start', 'Later').then(pick => {
       if (pick === 'Start') void vscode.commands.executeCommand('v5sim.start');
     });
+  } else {
+    void vexcodePortNote(context);      // not with the welcome: one message at a time
   }
 }
 

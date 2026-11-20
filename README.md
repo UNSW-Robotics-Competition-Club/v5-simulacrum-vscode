@@ -1,6 +1,6 @@
 # V5 Brain Simulator
 
-Run a simulated **VEX V5 brain** inside VS Code and test your robot code without a robot. The brain runs VEX's real firmware (VEXos) in an emulator, so your VEXcode or PROS program runs as it does on a brain. Its motors, sensors and drivetrain are simulated on a field you can see and drive.
+Run a simulated **VEX V5 brain** inside VS Code and test your robot code without a robot. The brain runs VEX's real firmware (VEXos) in an emulator, so your VEXcode, PROS or vexide (Rust) program runs as it does on a brain. Its motors, sensors and drivetrain are simulated on a field you can see and drive.
 
 > **Beta.** Built by the UNSW Robotics Competition Club on [V5 Simulacrum](https://github.com/UNSW-Robotics-Competition-Club/v5-simulacrum). Windows (through WSL) and macOS.
 
@@ -47,9 +47,28 @@ Everything else (the emulator, Python, the robot simulator) comes inside the ext
 ## Get your program onto the brain
 
 - **Windows: download as usual.** VEXcode and PROS see the simulated brain on USB, through the [usbip-win2](https://github.com/vadimgrn/usbip-win2) driver. If the driver isn't installed, the extension offers to install it (**V5 Sim: Install USB Driver**).
-- **Anywhere: V5 Sim: Run Program on Sim.** You can also right-click a `.bin` and choose **Run Program on Sim**. Pick a program from your `build/` or `bin/` folder and a slot; the simulator restarts with it running. In a PROS project with the `pros` CLI it can upload the project instead.
+- **Anywhere: V5 Sim: Run Program on Sim.** You can also right-click a `.bin` and choose **Run Program on Sim**. Pick your project (or a `.bin`) and a slot. With the simulator running, the program is installed on the running brain and started in about a second (a few seconds for a big PROS library the first time); the robot, the field and the panes stay as they are. With no simulator running, it starts one with the program. No USB driver needed, on Windows or a Mac.
+- **What runs**: what your project's own tools would download. A VEXcode C++ build; a PROS project's hot/cold pair (or its monolith, whichever is newer); a VEXcode Python `main.py`; a **vexide (Rust)** project's newest `cargo v5 build` (`target/*-vex-v5/{debug,release}/<name>.bin`, in its `[package.metadata.v5]` slot).
+- **Out-of-date builds**: if a source file changed after the build, it asks first: **Build and run** (`pros make`, `cargo v5 build`, or VEXcode's build) or **Run anyway**. Nothing builds unless you choose it.
+- **The project's own uploader**: in a PROS project with the `pros` CLI, the picker can run `pros upload`; on Windows with the USB driver, a Rust project can use `cargo v5 upload`.
 - **Program output**: **V5 Sim: Open Program Terminal** shows what your program prints.
 - **Every start**: set `v5sim.program` to a `.bin` to install and run it each time the simulator starts.
+
+## Debug on Sim
+
+Set breakpoints, step through your code, and look at variables and the call stack while your program runs on the simulated brain. It works with [v5gdb](https://github.com/vexide/v5gdb), a debugger built into the program, in **PROS** (kernel 4.2.3 or later) and **vexide** (0.9.0-alpha.1 or later) projects. VEXcode projects can't be debugged this way.
+
+1. Press **F5** with a `V5 Sim` launch configuration (**Run: Add Configuration…** → **V5 Sim: Debug on Sim (v5gdb)**), or run **V5 Sim: Debug on Sim**.
+2. If the project doesn't use v5gdb yet, it offers to add it: the dependency (`cargo add v5gdb`, or `pros c apply v5gdb` from v5gdb's depot) in a terminal you can watch, and the install call through VS Code's change preview, so nothing is written until you apply it. Build, then press F5 again.
+3. The simulator starts with its debugger bridge (or installs the program on a running one that has it), the program starts, and the debugger connects and pauses it. Set breakpoints and continue. What the program prints shows in a **V5 program** terminal.
+
+You need **GDB** with ARM support (the PROS extension's toolchain has it; on a Mac `brew install gdb`; set `v5sim.gdbPath` for another) and the **C/C++** extension (or Native Debug in VSCodium). With the install call the extension adds (`stop_motors_on_break`), the motors stop while the program is paused.
+
+A launch configuration can name the project and slot:
+
+```json
+{ "type": "v5sim", "request": "launch", "name": "Debug on V5 Sim", "program": "${workspaceFolder}", "slot": 2 }
+```
 
 ## Settings
 
@@ -62,6 +81,8 @@ Everything else (the emulator, Python, the robot simulator) comes inside the ext
 | `v5sim.wslDistro` | `Ubuntu-24.04` | Windows: the WSL distribution |
 | `v5sim.instanceId` | `auto` | Which simulator instance; instance N serves its pages on port 8765+N |
 | `v5sim.openBrainOnStart` | `true` | Open the brain screen when the simulator starts |
+| `v5sim.runOnBuild` | `ask` | After a build: offer to run it on the simulator, run it (`always`), or nothing (`never`) |
+| `v5sim.gdbPath` | | GDB for **Debug on Sim**; empty: the PROS toolchain's, else one on PATH |
 | `v5sim.errorReporting` | `true` | Send automatic error reports (also needs VS Code's telemetry on) |
 | `v5sim.feedbackEndpoint` | the maintainers' server | Where **Report a Problem** sends reports; empty: save a zip and open a GitHub issue instead |
 | `v5sim.repoPath` | | A simulator checkout to use instead of the bundled one (for simulator development) |
@@ -73,11 +94,14 @@ Everything else (the emulator, Python, the robot simulator) comes inside the ext
 **"WSL can't run Windows programs".** Ubuntu 24.04 can switch off WSL's ability to run Windows programs at boot. The extension then puts the brain on USB itself and offers **Fix WSL**, which turns it back on now and after reboots.
 
 **macOS: VEXcode's Download button can't see the brain.** On a Mac the brain's USB is two serial ports (`/tmp/ttyV5sys` for uploads, `/tmp/ttyV5user` for program output), not a USB device. Instead:
-- **Build as usual**: when the build finishes, the extension offers **Run on Sim**, which installs the new program in the simulated brain (the project's slot, else `v5sim.slot`) and starts it. **Always** stops it asking (setting `v5sim.runOnBuild`).
-- **▶ Run on Sim** in the status bar, or in a VEXcode project's editor title bar, picks a program to run.
+- **Build as usual**: when the build finishes, the extension offers **Run on Sim**, which installs the new program on the simulated brain (the project's slot, else `v5sim.slot`) and starts it. **Always** stops it asking (setting `v5sim.runOnBuild`).
+- **▶ Run on Sim** in the status bar, or in a VEXcode or Rust project's editor title bar, picks a program to run.
 - Right-click a `.bin` (or a VEXcode Python `.py`) → **Run Program on Sim**.
-- It runs what your project's own tools would download: a VEXcode C++ build, a PROS project's hot/cold pair (or its monolith, whichever is newer), or a VEXcode Python `main.py` with VEX's Python runtime (from the VEXcode extension, which downloads it when you open a V5 Python project).
 - The PROS CLI with the port given: `pros upload --port /tmp/ttyV5sys`.
+
+**`pros upload` (or `cargo v5 upload`) says "could not open port", then works on the second try.** The VEXcode extension checks on the brain every few seconds while VS Code has the focus, and an upload that starts during a check finds the port busy. This happens with a real brain too. Try again, upload from a terminal outside VS Code, or keep the VEXcode extension in a different [profile](https://code.visualstudio.com/docs/configure/profiles) from your PROS projects. **Run Program on Sim** isn't affected.
+
+**Debug on Sim: GDB can't connect, or times out.** The program has to call v5gdb's install first thing (`main` in vexide, `initialize()` in PROS), and be built with debug information: for vexide, a debug build (`cargo v5 build`, not `--release`). **V5 Sim: Show Log** shows the bridge's messages (`[v5gdb] ...`). Two simulators debugging at once use different ports (instance N: 35537+2N).
 
 **Anything else.** **V5 Sim: Show Log** shows what the simulator is doing. **V5 Sim: Repair Simulator** unpacks it again.
 
