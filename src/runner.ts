@@ -79,6 +79,12 @@ export class Runner {
     return envPrefix(this.opts) + ['bash', `${repo}/scripts/${script}`, ...args].map(sh).join(' ');
   }
 
+  /** A command line running one of the simulator's Python scripts. */
+  async pythonCommand(script: string, args: string[]): Promise<string> {
+    const repo = await this.repoUnix();
+    return envPrefix(this.opts) + ['python3', '-I', `${repo}/scripts/${script}`, ...args].map(sh).join(' ');
+  }
+
   /** Start a long-running script; output streams through the process. */
   async spawnScript(script: string, args: string[]): Promise<ChildProcess> {
     const [cmd, argv] = this.argv(await this.scriptCommand(script, args));

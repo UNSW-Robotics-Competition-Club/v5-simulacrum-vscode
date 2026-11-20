@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **Run on Sim without a restart**: with the simulator running, Run Program on Sim (and the after-build offer) installs the program on the running brain and starts it, in about a second for most programs, keeping the brain, the robot and the panes as they are. It works without the Windows USB driver and on a Mac, and on a simulator started outside VS Code. Programs now stay in the brain's storage between runs, as on a real brain. A simulator from an older version is restarted with the program, as before.
 - **Rust (vexide) projects**: a project whose `Cargo.toml` uses vexide (or has cargo-v5's `[package.metadata.v5]`) runs on the simulator like PROS and VEXcode ones: Run Program on Sim runs its newest `cargo v5 build` (`target/*-vex-v5/{debug,release}/<name>.bin`) in its `slot`, a new build is offered Run on Sim, and on Windows with the USB driver the picker offers `cargo v5 upload`.
 - **Out-of-date builds**: running a project whose build is older than its source warns first, with **Build and run** (`pros make`, `cargo v5 build`, or VEXcode's build) or **Run anyway**. Nothing builds unless you choose it.
 

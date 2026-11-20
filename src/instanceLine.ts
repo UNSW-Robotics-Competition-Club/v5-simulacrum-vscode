@@ -10,6 +10,7 @@ export interface Running {
   ttySys?: string;             // the brain's USB serial ports (--usb)
   ttyUser?: string;
   usbipPort?: number;          // its USB/IP server on localhost (--usbip)
+  uploadSock?: string;         // v5upload.py's way into its system port (no restart)
 }
 
 const LINE = /\[v5brain\] instance (\d+):[^\n]*/;
@@ -27,5 +28,7 @@ export function parseInstanceLine(text: string): Running | undefined {
   }
   const usbip = /USB\/IP localhost:(\d+)/.exec(line[0]);
   if (usbip) out.usbipPort = +usbip[1];
+  const upload = /, upload (\S+?)(?:,|\s*$)/.exec(line[0]);
+  if (upload) out.uploadSock = upload[1];
   return out;
 }

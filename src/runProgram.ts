@@ -12,6 +12,7 @@ import { FileProgram, Fs, Program, Project, describe, isVexideCargo, programForE
 import { isWindows, onPath, sh, terminalEnv } from './runner';
 import { installUsbDriver } from './usbDriver';
 import { upToDate } from './buildFirst';
+import { runOnRunning } from './liveUpload';
 import { slotSetting } from './settings';
 import { Running, SimInstance } from './simInstance';
 
@@ -27,8 +28,10 @@ export const diskFs: Fs = {
 
 /** The VEXcode extension's Python SDK (VEX's VM is in it), next to ours. */
 let vexSdk: string | undefined;
-export function initPrograms(context: vscode.ExtensionContext): void {
+let runLog: vscode.OutputChannel | undefined;
+export function initPrograms(context: vscode.ExtensionContext, log: vscode.OutputChannel): void {
   vexSdk = path.join(path.dirname(context.globalStorageUri.fsPath), 'vexrobotics.vexcode', 'sdk', 'python');
+  runLog = log;
 }
 export const vexSdkRoot = () => vexSdk;
 
@@ -126,13 +129,25 @@ export async function runProgram(sim: SimInstance, given?: string): Promise<void
   if (program) await runOn(sim, program, slot);
 }
 
-/** Install the program in slot and start it: the sim restarts with --run
- *  (and --link for a hot/cold pair or a Python program). A build older
- *  than its source is warned about first, unless it was just built
+/** Install the program in slot and start it: on the running simulator
+ *  without a restart (its upload socket), else by (re)starting it with
+ *  --run (and --link for a hot/cold pair or a Python program). A build
+ *  older than its source is warned about first, unless it was just built
  *  (fresh: the after-build offer). */
 export async function runOn(sim: SimInstance, given: Program, slot: number, opts: { fresh?: boolean } = {}): Promise<void> {
   const program = opts.fresh ? given : await upToDate(given, diskFs, vexSdk);
   if (!program) return;
+  if (sim.state === 'running' && runLog) {
+    const live = await runOnRunning(sim, program, slot, runLog);
+    if (live === 'done') return;
+    if (live === 'failed') {
+      const restart = 'Restart with it', log = 'Show log';
+      const pick = await vscode.window.showWarningMessage(
+        `Couldn't install ${describe(program)} on the running simulator. Restart the simulator with it instead?`, restart, log);
+      if (pick === log) runLog.show(true);
+      if (pick !== restart) return;
+    }
+  }
   if (sim.state !== 'stopped' && !sim.owned) {
     const ok = await vscode.window.showWarningMessage(
       `Restart simulator instance ${sim.current?.id ?? ''} from VS Code to run ${describe(program)}?`,
