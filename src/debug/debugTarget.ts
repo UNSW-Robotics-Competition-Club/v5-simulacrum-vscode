@@ -113,7 +113,8 @@ export type Debugger = 'cppdbg' | 'native-debug';
  *  connects to the simulator's v5gdb bridge, as v5gdb's VS Code recipe. */
 export function debugConfiguration(t: DebugTarget, o: { name: string; gdb: string; port: number; cwd: string; via: Debugger }):
   Record<string, unknown> {
-  const symbols = t.moreElfs.map(e => `add-symbol-file ${gdbPath(e)}`);
+  // a slow (emulated) brain: GDB waits longer than its 2 s for each reply
+  const symbols = ['set remotetimeout 10', ...t.moreElfs.map(e => `add-symbol-file ${gdbPath(e)}`)];
   const server = `127.0.0.1:${o.port}`;
   if (o.via === 'native-debug') {
     return { type: 'gdb', request: 'attach', name: o.name, executable: t.elf, target: server, remote: true,

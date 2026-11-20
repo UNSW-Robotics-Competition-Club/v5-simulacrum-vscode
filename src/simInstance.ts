@@ -45,6 +45,9 @@ export class SimInstance implements vscode.Disposable {
   private attaching?: Promise<void>;
   private readonly changed = new vscode.EventEmitter<SimInstance>();
   readonly onDidChange = this.changed.event;
+  private readonly started = new vscode.EventEmitter<void>();
+  /** The program given to start() (--run) has started on the brain. */
+  readonly onProgramStarted = this.started.event;
 
   constructor(private readonly log: vscode.OutputChannel) {}
 
@@ -101,10 +104,18 @@ export class SimInstance implements vscode.Disposable {
       const budget = new OutputBudget();
       const timer = setTimeout(() => this.abandonStart(proc,
         `it didn't say which instance it is within ${START_TIMEOUT_MS / 1000} s`), START_TIMEOUT_MS);
+      let lines = '';
       const onData = (chunk: Buffer) => {
         const text = chunk.toString();
         const shown = budget.take(text, Date.now());
         if (shown) this.log.append(shown);
+        // v5brain.sh says when --run's program has started (Debug on Sim waits for it)
+        lines = (lines + text).slice(-4096);
+        const nl = lines.lastIndexOf('\n');
+        if (nl >= 0) {
+          if (/\[v5brain\] started slot/.test(lines.slice(0, nl)) && this.proc === proc) this.started.fire();
+          lines = lines.slice(nl + 1);
+        }
         buffer = (buffer + text).slice(-4096);
         // whole lines only: the instance line can arrive in two chunks
         const running = parseInstanceLine(buffer.slice(0, buffer.lastIndexOf('\n') + 1));
@@ -354,6 +365,7 @@ export class SimInstance implements vscode.Disposable {
 
   dispose(): void {
     this.changed.dispose();
+    this.started.dispose();
   }
 }
 

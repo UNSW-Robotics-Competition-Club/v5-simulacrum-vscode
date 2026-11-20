@@ -23,7 +23,20 @@ async function uploadSocket(runner: Runner, target: Running): Promise<string | u
   return r.code === 0 ? sock : undefined;
 }
 
-export async function runOnRunning(sim: SimInstance, program: Program, slot: number, log: vscode.OutputChannel): Promise<LiveResult> {
+/** v5upload.py's exit status when nothing answers at the socket. */
+const EXIT_NO_PORT = 3;
+
+/** One upload at a time: a second would take the brain's port from the
+ *  first mid-transfer (v5usb_share.py gives it to the newest uploader). */
+let queue: Promise<unknown> = Promise.resolve();
+
+export function runOnRunning(sim: SimInstance, program: Program, slot: number, log: vscode.OutputChannel): Promise<LiveResult> {
+  const next = queue.then(() => upload(sim, program, slot, log));
+  queue = next.catch(() => undefined);
+  return next;
+}
+
+async function upload(sim: SimInstance, program: Program, slot: number, log: vscode.OutputChannel): Promise<LiveResult> {
   const target = sim.state === 'running' ? sim.current : undefined;
   if (!target) return 'unavailable';
   const runner = await sim.runner();
@@ -50,6 +63,7 @@ export async function runOnRunning(sim: SimInstance, program: Program, slot: num
     }, UPLOAD_TIMEOUT_MS);
   });
   if (r.code === 0) return 'done';
-  log.appendLine(`[v5upload] failed: ${r.stderr.trim() || `exit ${r.code}`}`);
-  return 'failed';
+  log.appendLine(`[v5upload] ${r.code === EXIT_NO_PORT ? 'no answer' : 'failed'}: ${r.stderr.trim() || `exit ${r.code}`}`);
+  // nothing at the socket (a stale one, an older simulator): restart instead
+  return r.code === EXIT_NO_PORT ? 'unavailable' : 'failed';
 }

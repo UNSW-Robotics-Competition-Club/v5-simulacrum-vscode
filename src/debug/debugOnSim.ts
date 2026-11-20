@@ -20,6 +20,9 @@ import { V5GDB_WIKI, addDependencyCommands, installSnippet, upgradeCommand, v5gd
 
 const START_TIMEOUT_MS = 2 * 60_000;
 const PORT_TIMEOUT_MS = 60_000;
+/** After the program starts, before GDB connects: its v5gdb install call
+ *  runs first thing (main / initialize), so a moment is enough. */
+const PROGRAM_SETTLE_MS = 1_000;
 const DEBUGGERS: [string, Debugger][] = [['ms-vscode.cpptools', 'cppdbg'], ['anysphere.cpptools', 'cppdbg'], ['webfreak.debug', 'native-debug']];
 
 let log: vscode.OutputChannel;
@@ -30,18 +33,79 @@ export function initDebug(context: vscode.ExtensionContext, sim: SimInstance, ou
   storageParent = path.dirname(context.globalStorageUri.fsPath);
   context.subscriptions.push(
     vscode.commands.registerCommand('v5sim.debugProgram', async (uri?: vscode.Uri) => {
-      const config = await prepare(sim, uri?.fsPath);
+      const config = await once(() => prepare(sim, uri?.fsPath));
       if (config) await vscode.debug.startDebugging(folderOf(String(config.cwd)), config as vscode.DebugConfiguration);
     }),
     vscode.debug.registerDebugConfigurationProvider('v5sim', {
       provideDebugConfigurations: () => [{ type: 'v5sim', request: 'launch', name: 'Debug on V5 Sim' }],
       // VS Code runs the C/C++ extension's resolver on what this returns
-      // (its type is cppdbg): no debug adapter of our own
-      resolveDebugConfiguration: async (folder, config) =>
-        (await prepare(sim, typeof config.program === 'string' ? config.program : undefined,
-          folder?.uri.fsPath, typeof config.slot === 'number' ? config.slot : undefined)) as vscode.DebugConfiguration | undefined,
+      // (its type is cppdbg): no debug adapter of our own. This runs before
+      // VS Code substitutes variables, so program's are substituted here.
+      resolveDebugConfiguration: async (folder, config) => {
+        const given = typeof config.program === 'string' ? substitute(config.program, folder) : undefined;
+        if (given === null) return undefined;
+        const slot = config.slot;
+        if (slot !== undefined && !(Number.isInteger(slot) && slot >= 1 && slot <= 8)) {
+          void vscode.window.showWarningMessage(`The launch configuration's slot must be 1 to 8 (it's ${JSON.stringify(slot)}).`);
+          return undefined;
+        }
+        return (await once(() => prepare(sim, given, folder?.uri.fsPath, slot))) as vscode.DebugConfiguration | undefined;
+      },
     }),
+    // the program's output, for as long as its debug session lasts
+    vscode.debug.onDidStartDebugSession(s => {
+      const port = s.configuration[OUTPUT_KEY];
+      if (typeof port === 'number') outputs.set(s.id, showOutput(port, `V5 program (${s.name})`));
+    }),
+    vscode.debug.onDidTerminateDebugSession(s => {
+      outputs.get(s.id)?.dispose();
+      outputs.delete(s.id);
+    }),
+    { dispose: () => outputs.forEach(t => t.dispose()) },
   );
+}
+
+/** Where a debug configuration carries the bridge's output port (VS Code
+ *  passes extra keys through; GDB's adapters ignore it). */
+const OUTPUT_KEY = 'v5simOutputPort';
+const outputs = new Map<string, vscode.Terminal>();
+
+/** One Debug on Sim at a time (a second would restart or upload under it). */
+let preparing = false;
+async function once<T>(f: () => Promise<T | undefined>): Promise<T | undefined> {
+  if (preparing) {
+    void vscode.window.showInformationMessage('Debug on Sim is already getting a program ready.');
+    return undefined;
+  }
+  preparing = true;
+  try {
+    return await f();
+  } finally {
+    preparing = false;
+  }
+}
+
+/** The variables a launch configuration's program may use (VS Code only
+ *  substitutes after this provider has run); null when one is unknown. */
+function substitute(value: string, folder: vscode.WorkspaceFolder | undefined): string | null {
+  const file = vscode.window.activeTextEditor?.document.uri;
+  const vars: Record<string, string | undefined> = {
+    workspaceFolder: folder?.uri.fsPath ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath,
+    workspaceFolderBasename: folder?.name,
+    file: file?.scheme === 'file' ? file.fsPath : undefined,
+    fileDirname: file?.scheme === 'file' ? path.dirname(file.fsPath) : undefined,
+  };
+  let unknown: string | undefined;
+  const out = value.replace(/\$\{([^}]+)\}/g, (all, name: string) => {
+    const v = vars[name];
+    if (v === undefined) unknown ??= all;
+    return v ?? all;
+  });
+  if (unknown) {
+    void vscode.window.showWarningMessage(`Debug on Sim can't use ${unknown} in "program": use \${workspaceFolder}, \${file} or a path.`);
+    return null;
+  }
+  return out;
 }
 
 function folderOf(dir: string): vscode.WorkspaceFolder | undefined {
@@ -82,8 +146,7 @@ async function prepare(sim: SimInstance, given?: string, folder?: string, givenS
   const slot = givenSlot ?? proj.slot ?? slotSetting();
   const port = await simWithGdb(sim, program, slot);
   if (!port) return undefined;
-  showOutput(port + 1, `V5 program (debug, ${path.basename(root)})`);
-  return debugConfiguration(t, { name: `V5 Sim: ${proj.label}`, gdb, port, cwd: root, via });
+  return { ...debugConfiguration(t, { name: `V5 Sim: ${proj.label}`, gdb, port, cwd: root, via }), [OUTPUT_KEY]: port + 1 };
 }
 
 /** The project to debug: the one given (a folder or a file in it), the
@@ -186,9 +249,17 @@ async function simWithGdb(sim: SimInstance, program: Program, slot: number): Pro
         { modal: true }, 'Restart');
       if (ok !== 'Restart') return undefined;
     }
+    // listening before the restart: the program can start soon after boot
+    const started = programStarted(sim, START_TIMEOUT_MS);
     await sim.restart({ program: program.file, slot, link: program.kind === 'bin' ? undefined : program.link, gdb: true });
     await untilSettled(sim);
+    if (sim.state === 'running' && !await started) {
+      void vscode.window.showWarningMessage("The program didn't start on the simulator: see the V5 Sim log.");
+      return undefined;
+    }
   }
+  // the transfer's end started it; v5gdb is reading once its install call ran
+  await new Promise(r => setTimeout(r, PROGRAM_SETTLE_MS));
   const port = sim.state === 'running' ? sim.current?.gdbPort : undefined;
   if (!port) {
     void vscode.window.showWarningMessage(
@@ -202,6 +273,17 @@ async function simWithGdb(sim: SimInstance, program: Program, slot: number): Pro
     return undefined;
   }
   return port;
+}
+
+/** True once the sim says the --run program started; false on a timeout
+ *  or when the simulator stops first. */
+function programStarted(sim: SimInstance, timeoutMs: number): Promise<boolean> {
+  return new Promise(resolve => {
+    const done = (ok: boolean) => { clearTimeout(t); a.dispose(); b.dispose(); resolve(ok); };
+    const t = setTimeout(() => done(false), timeoutMs);
+    const a = sim.onProgramStarted(() => done(true));
+    const b = sim.onDidChange(() => { if (sim.state === 'stopped') done(false); });
+  });
 }
 
 function untilSettled(sim: SimInstance): Promise<void> {
@@ -229,7 +311,7 @@ async function portOpen(port: number, timeoutMs: number): Promise<boolean> {
 
 /** The program's output (the bridge's text port) in a terminal, until the
  *  simulator closes it. */
-function showOutput(port: number, name: string): void {
+function showOutput(port: number, name: string): vscode.Terminal {
   const write = new vscode.EventEmitter<string>();
   const close = new vscode.EventEmitter<void>();
   let sock: net.Socket | undefined;
@@ -243,8 +325,10 @@ function showOutput(port: number, name: string): void {
       sock.on('error', e => write.fire(`\r\n[V5 Sim: no program output: ${e.message}]\r\n`));
       sock.on('close', () => write.fire('\r\n[V5 Sim: the simulator closed the program output]\r\n'));
     },
-    close: () => sock?.destroy(),
+    close: () => { sock?.destroy(); write.dispose(); close.dispose(); },
     handleInput: () => write.fire('\r\n[V5 Sim: while debugging, input goes to GDB, not the program]\r\n'),
   };
-  vscode.window.createTerminal({ name, pty }).show(true);
+  const term = vscode.window.createTerminal({ name, pty });
+  term.show(true);
+  return term;
 }

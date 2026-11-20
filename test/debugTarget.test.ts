@@ -86,7 +86,7 @@ test('the debug configuration: v5gdb\'s recipe for the C/C++ extension, or Nativ
   assert.equal(c.miDebuggerServerAddress, '127.0.0.1:35537');
   assert.equal(c.program, t.elf);
   assert.deepEqual((c.setupCommands as { text: string }[]).map(s => s.text),
-    [...V5GDB_SETUP, 'add-symbol-file "C:/My Bot/bin/cold.package.elf"']);
+    [...V5GDB_SETUP, 'set remotetimeout 10', 'add-symbol-file "C:/My Bot/bin/cold.package.elf"']);
   const n = debugConfiguration(t, { name: 'V5 Sim', gdb: 'gdb.exe', port: 35538, cwd: 'C:\\bot', via: 'native-debug' });
   assert.equal(n.type, 'gdb');
   assert.equal(n.target, '127.0.0.1:35538');
