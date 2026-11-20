@@ -117,6 +117,8 @@ Reports are stored privately for the maintainers; the summary, details and conta
 
 **Automatic error reports.** When the simulator fails to set up or start, or the extension hits an error, it sends the maintainers a short report: the error, where in the extension it happened, the extension, VS Code and OS versions, and for a failed start the last lines of the V5 Sim log. Your home folder, user name and computer name are taken out, and no code is sent. It follows VS Code's telemetry setting (`telemetry.telemetryLevel`: sent at `all` or `error`, never at `crash` or `off`); `v5sim.errorReporting: false` turns it off for this extension only.
 
+**Active users.** When VS Code's telemetry level is `all`, each window also sends an anonymous session (an install id and the extension's version), so the maintainers can count users per version. Not at `error`, `crash` or `off`, nor with `v5sim.errorReporting: false`.
+
 What is sent, where it's kept and for how long: [PRIVACY.md](PRIVACY.md).
 
 Or directly: [GitHub issues](https://github.com/UNSW-Robotics-Competition-Club/v5-simulacrum-vscode/issues). Building the extension or working on the simulator: see [DEVELOPMENT.md](DEVELOPMENT.md).

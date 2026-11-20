@@ -1,6 +1,6 @@
 # Privacy
 
-The V5 Brain Simulator extension sends information to its maintainers, the UNSW Robotics Competition Club, in two ways: reports you send with **Report a Problem**, and automatic **error reports**. Nothing else leaves your computer. The simulator itself runs locally; the only other download is VEX's firmware (VEXos), from VEX.
+The V5 Brain Simulator extension sends information to its maintainers, the UNSW Robotics Competition Club, in three ways: reports you send with **Report a Problem**, automatic **error reports**, and an **active-user count**. Nothing else leaves your computer. The simulator itself runs locally; the only other download is VEX's firmware (VEXos), from VEX.
 
 ## Report a Problem
 
@@ -28,10 +28,22 @@ It never contains your code, your computer's name or your user name: these are t
 
 Error reports follow VS Code's telemetry setting: they are sent when **Telemetry: Telemetry Level** (`telemetry.telemetryLevel`) is `all` or `error`, and never when it is `crash` or `off`. Setting `v5sim.errorReporting` to `false` turns them off for this extension only.
 
+## Active-user count
+
+So the maintainers know how many people use each version, each VS Code window with the extension sends a short session message to the same Sentry project when it opens and when it closes. It contains:
+
+- an anonymous id for the install (VS Code's machine id, hashed again so it can't be matched to anything else);
+- the extension's version;
+- whether an error report was sent while the window was open.
+
+Nothing else: no code, files, settings, computer name or user name. Sentry is set not to store the IP address these come from.
+
+It is sent only when **Telemetry: Telemetry Level** is `all` (not `error`, `crash` or `off`), and never when `v5sim.errorReporting` is `false`.
+
 ## How long it is kept
 
 - Reports on Cloudflare are deleted automatically after **180 days**.
-- Sentry keeps error reports and the report copies for **30 days** (its free plan's retention), then deletes them.
+- Sentry keeps error reports and the report copies for **30 days** (its free plan's retention), then deletes them. Session messages are kept only as counts per version (up to 90 days).
 
 ## Who can see it
 

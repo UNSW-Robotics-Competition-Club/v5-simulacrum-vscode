@@ -13,7 +13,7 @@ import { initRuntime, simRunner } from './runtime';
 import { cfg } from './settings';
 import { SimInstance } from './simInstance';
 import { initUsbDriver, installUsbDriver } from './usbDriver';
-import { initErrorReporting, reporting } from './errors/errorReporting';
+import { endErrorReportingSession, initErrorReporting, reporting } from './errors/errorReporting';
 
 let sim: SimInstance | undefined;
 
@@ -142,5 +142,9 @@ export function activate(context: vscode.ExtensionContext): void {
 
 /** VS Code is closing: stop our simulator gracefully (never killed). */
 export async function deactivate(): Promise<void> {
-  if (sim?.owned) await sim.stop();
+  try {
+    if (sim?.owned) await sim.stop();
+  } finally {
+    await endErrorReportingSession();
+  }
 }
