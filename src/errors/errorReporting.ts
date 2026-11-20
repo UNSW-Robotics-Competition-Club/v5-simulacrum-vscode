@@ -6,7 +6,13 @@
 //
 // An event holds the error, where in this extension it happened, the
 // versions and OS, and for a failed start the last lines of the V5 Sim log;
-// home folder and user name are taken out (scrub.ts). No code, no usage data.
+// home folder and user name are taken out (scrub.ts). No code.
+//
+// Active users: when telemetry is fully on ("all"), each VS Code window also
+// sends a Sentry Release Health session (an anonymous install id, the
+// extension's version, and whether an error was reported), so Sentry counts
+// active installs per version. Nothing else about usage is sent.
+import { createHash } from 'node:crypto';
 import * as os from 'node:os';
 import * as vscode from 'vscode';
 
@@ -25,6 +31,7 @@ const SENTRY_DSN = 'https://bcd47336ef9ebb1f75e829ad9f2dfe98@o4512458784440320.i
 const MAX_EVENTS_PER_SESSION = 20;
 const LOG_TAIL_LINES = 40;
 const FLUSH_TIMEOUT_MS = 2_000;
+const SESSION_EVENT = 'session';
 
 /** Where a failure happened; a Sentry tag and part of its grouping. */
 export type Stage = 'setup' | 'start' | 'usb-attach' | 'wsl-interop' | 'usb-driver' | 'ports' | 'feedback' | 'run-on-sim'
@@ -33,6 +40,7 @@ export type Stage = 'setup' | 'start' | 'usb-attach' | 'wsl-interop' | 'usb-driv
 let logger: vscode.TelemetryLogger | undefined;
 let logBuffer: LogBuffer | undefined;
 let scrubOptions: ScrubOptions | undefined;
+let reporter: SentryReporter | undefined;
 
 export function initErrorReporting(context: vscode.ExtensionContext, log: LogBuffer): void {
   const dsn = (process.env.V5SIM_SENTRY_DSN ?? SENTRY_DSN).trim();
@@ -55,9 +63,14 @@ export function initErrorReporting(context: vscode.ExtensionContext, log: LogBuf
   }
   logBuffer = log;
   scrubOptions = scrub;
+  reporter = sentry;
   let sent = 0;
   const sender: vscode.TelemetrySender = {
-    sendEventData: () => undefined,          // no usage telemetry, errors only
+    // VS Code calls this only when telemetry is "all"; the one usage event
+    // is the window's session
+    sendEventData: name => {
+      if (name === SESSION_EVENT && cfg().get<boolean>('errorReporting', true)) sentry.startSession(installId());
+    },
     sendErrorData: (error, data) => {
       if (!cfg().get<boolean>('errorReporting', true) || sent >= MAX_EVENTS_PER_SESSION) return;
       sent++;
@@ -83,6 +96,24 @@ export function initErrorReporting(context: vscode.ExtensionContext, log: LogBuf
   };
   logger = vscode.env.createTelemetryLogger(sender, { ignoreBuiltInCommonProperties: true });
   context.subscriptions.push(logger);
+  logger.logUsage(SESSION_EVENT);
+}
+
+/** VS Code is closing: end the window's session (if one was started). */
+export async function endErrorReportingSession(): Promise<void> {
+  if (!reporter) return;
+  try {
+    reporter.endSession();
+    await reporter.flush(FLUSH_TIMEOUT_MS);
+  } catch {
+    // reporting must never break shutdown
+  }
+}
+
+/** An anonymous id for this install: VS Code's machine id (itself a hash),
+ *  hashed again with our own prefix so it can't be matched to other data. */
+function installId(): string {
+  return createHash('sha256').update(`v5sim-vscode:${vscode.env.machineId}`).digest('hex').slice(0, 32);
 }
 
 /** Reports a failure the user was shown (or would be stuck on). Strings

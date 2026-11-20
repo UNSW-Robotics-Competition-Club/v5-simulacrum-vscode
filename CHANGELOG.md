@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Active users per version**: when VS Code's telemetry level is `all`, each window sends the maintainers an anonymous session (install id and extension version) so they can count users per version. Never sent at `error`, `crash` or `off`, or with `v5sim.errorReporting` off. See [PRIVACY.md](PRIVACY.md).
+
 ## 0.3.14 (beta)
 
 - **Closing a pane while the simulator starts** no longer reports an error ("Webview is disposed").

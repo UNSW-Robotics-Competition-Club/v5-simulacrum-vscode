@@ -289,7 +289,7 @@
           "type": "boolean",
           "default": true,
           "scope": "application",
-          "markdownDescription": "Send the maintainers a report when the simulator fails to set up or start, or the extension hits an error: the error, where it happened, the extension, VS Code and OS versions, and for a failed start the last lines of the V5 Sim log (home folder and user name taken out). No code. Only sent when VS Code's `#telemetry.telemetryLevel#` allows errors."
+          "markdownDescription": "Send the maintainers a report when the simulator fails to set up or start, or the extension hits an error: the error, where it happened, the extension, VS Code and OS versions, and for a failed start the last lines of the V5 Sim log (home folder and user name taken out). No code. Only sent when VS Code's `#telemetry.telemetryLevel#` allows errors. When it is `all`, each window also sends an active-user session (an anonymous install id and the extension's version) so the maintainers can count users per version; `false` turns that off too."
         },
         "v5sim.feedbackEndpoint": {
           "type": "string",

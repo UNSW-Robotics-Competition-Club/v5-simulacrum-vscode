@@ -6,10 +6,12 @@
 import {
   Scope,
   applySdkMetadata,
+  closeSession,
   createStackParser,
   createTransport,
   dedupeIntegration,
   linkedErrorsIntegration,
+  makeSession,
   type ErrorEvent,
   type Transport,
   type TransportMakeRequestResponse,
@@ -35,6 +37,13 @@ export interface CaptureContext {
 
 export interface SentryReporter {
   capture(error: Error, context?: CaptureContext): string;
+  /** Starts a Release Health session (one per VS Code window): Sentry
+   *  counts active installs and crash-free sessions per release from these.
+   *  `installId` is an anonymous id for the install; errors captured while
+   *  the session runs mark it errored. */
+  startSession(installId: string): void;
+  /** Ends the session (exited, or errored if an error was captured). */
+  endSession(): void;
   flush(timeoutMs?: number): Promise<boolean>;
   close(timeoutMs?: number): Promise<boolean>;
 }
@@ -90,6 +99,19 @@ export function createSentry(o: SentryOptions): SentryReporter {
       if (context.extra) s.setExtras(context.extra);
       if (context.fingerprint) s.setFingerprint(context.fingerprint);
       return client.captureException(error, { originalException: error }, s);
+    },
+    startSession(installId) {
+      // only the release and environment: no IP address or user agent
+      const session = makeSession({ did: installId, release: o.release, environment: o.environment });
+      scope.setSession(session);
+      client.captureSession(session);
+    },
+    endSession() {
+      const session = scope.getSession();
+      if (!session) return;
+      closeSession(session);
+      client.captureSession(session);
+      scope.setSession(undefined);
     },
     flush: timeoutMs => Promise.resolve(client.flush(timeoutMs)),
     close: timeoutMs => Promise.resolve(client.close(timeoutMs)),
