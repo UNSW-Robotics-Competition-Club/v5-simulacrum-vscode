@@ -146,6 +146,14 @@
         "category": "V5 Sim"
       }
     ],
+    "taskDefinitions": [
+      {
+        "type": "v5sim-build",
+        "properties": {
+          "id": { "type": "string", "description": "Identifies one build run (set by the extension)." }
+        }
+      }
+    ],
     "menus": {
       "editor/title": [
         {

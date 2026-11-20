@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import * as path from 'node:path';
 import { test } from 'node:test';
 
-import { Fs, Project, cargoProject, compareVersions, readCargo, programForEditor, programForFile, project, projectRoot, prosProject, pythonVm, vexProject } from '../src/programs';
+import { Fs, Project, buildFor, cargoProject, compareVersions, readCargo, staleSource, programForEditor, programForFile, project, projectRoot, prosProject, pythonVm, vexProject } from '../src/programs';
 
 /** A fake file system: path -> [mtime, contents]; folders are implied. */
 function fakeFs(files: Record<string, [number, string?]>): Fs {
@@ -218,4 +218,84 @@ test('a Rust file\'s project: the folder with a vexide Cargo.toml above it', () 
 test('a differential upload\'s base binary is not run on its own', () => {
   const f = path.join('w', 'robot', 'target', 'thumbv7a-vex-v5', 'release', 'slot_1.base.bin');
   assert.match(programForFile(f, undefined, undefined).problem!, /base/);
+});
+
+test('out of date: the newest source file newer than the build, per project kind', () => {
+  const r = path.join('w', 'robot');
+  const pros = fakeFs({
+    [path.join(r, 'project.pros')]: [1, prosJson],
+    [path.join(r, 'bin', 'hot.package.bin')]: [20],
+    [path.join(r, 'bin', 'cold.package.bin')]: [10],
+    [path.join(r, 'src', 'main.cpp')]: [15],
+    [path.join(r, 'src', 'auton', 'paths.cpp')]: [25],
+    [path.join(r, 'include', 'main.h')]: [5],
+  });
+  const hot = prosProject(r, pros)!.program!;
+  assert.equal(staleSource(r, hot, pros), path.join(r, 'src', 'auton', 'paths.cpp'));
+
+  const fresh = fakeFs({
+    [path.join(r, 'project.pros')]: [1, prosJson],
+    [path.join(r, 'bin', 'monolith.bin')]: [30],
+    [path.join(r, 'src', 'main.cpp')]: [15],
+    [path.join(r, 'README.md')]: [99],               // not a source folder
+  });
+  assert.equal(staleSource(r, prosProject(r, fresh)!.program!, fresh), undefined);
+
+  const rust = fakeFs({
+    [path.join(r, 'Cargo.toml')]: [40, '[package]\nname = "bot"\n[dependencies]\nvexide = "0.8"\n'],   // a comment edit doesn't rebuild
+    [path.join(r, 'target', 'thumbv7a-vex-v5', 'release', 'bot.bin')]: [30],
+    [path.join(r, 'src', 'main.rs')]: [20],
+    [path.join(r, 'src', 'bin', 'tool.rs')]: [35],                    // cargo's src/bin/ is source
+    [path.join(r, 'src', '.main.rs.swp')]: [50],                      // editor files aren't
+    [path.join(r, 'src', 'notes.txt')]: [50],
+  });
+  assert.equal(staleSource(r, cargoProject(r, rust)!.program!, rust), path.join(r, 'src', 'bin', 'tool.rs'));
+  const lock = fakeFs({
+    [path.join(r, 'Cargo.toml')]: [1, '[package]\nname = "bot"\n[dependencies]\nvexide = "0.8"\n'],
+    [path.join(r, 'Cargo.lock')]: [45],
+    [path.join(r, 'target', 'thumbv7a-vex-v5', 'release', 'bot.bin')]: [30],
+  });
+  assert.equal(staleSource(r, cargoProject(r, lock)!.program!, lock), path.join(r, 'Cargo.lock'));
+
+  // a Python program is its own source: never out of date
+  assert.equal(staleSource(r, { kind: 'python', file: path.join(r, 'src', 'main.py'), link: 'vm.bin' }, pros), undefined);
+  // a folder with no sources at all: nothing to compare
+  assert.equal(staleSource(r, { kind: 'bin', file: path.join(r, 'x.bin') }, fakeFs({ [path.join(r, 'x.bin')]: [1] })), undefined);
+});
+
+test('the build for an out-of-date project: pros make, cargo v5 build (its profile), VEXcode\'s command', () => {
+  const r = path.join('w', 'robot');
+  const pros = fakeFs({ [path.join(r, 'project.pros')]: [1, prosJson] });
+  assert.deepEqual(buildFor(r, { kind: 'bin', file: path.join(r, 'bin', 'monolith.bin') }, pros), { shell: 'pros make' });
+  const rust = fakeFs({ [path.join(r, 'Cargo.toml')]: [1, '[package]\nname = "bot"\n[package.metadata.v5]\nslot = 1\n'] });
+  assert.deepEqual(buildFor(r, { kind: 'bin', file: path.join(r, 'target', 'thumbv7a-vex-v5', 'release', 'bot.bin') }, rust),
+    { shell: 'cargo v5 build --release' });
+  assert.deepEqual(buildFor(r, { kind: 'bin', file: path.join(r, 'target', 'armv7a-vex-v5', 'debug', 'bot.bin') }, rust),
+    { shell: 'cargo v5 build' });
+  const vex = fakeFs({ [path.join(r, '.vscode', 'vex_project_settings.json')]: [1, '{"project":{"name":"bot"}}'] });
+  assert.deepEqual(buildFor(r, { kind: 'bin', file: path.join(r, 'build', 'bot.bin') }, vex), { command: 'vexrobotics.vexcode.project.build' });
+  assert.equal(buildFor(r, { kind: 'bin', file: path.join(r, 'x.bin') }, fakeFs({})), undefined);
+});
+
+test('Cargo.toml: the v5 settings written as dotted keys or an inline table, a name from the workspace', () => {
+  assert.equal(readCargo('[package]\nname = "a"\nmetadata.v5.slot = 2\n').slot, 2);
+  const inline = readCargo('[package]\nname = "a"\n[package.metadata]\nv5 = { slot = 4, icon = "cool-x" }\n');
+  assert.equal(inline.slot, 4);
+  assert.equal(inline.v5Metadata, true);
+  assert.equal(readCargo('[package.metadata]\nv5.slot = 5\n').slot, 5);
+  const fromWs = readCargo('[package]\nname.workspace = true\n[dependencies]\nvexide.workspace = true\n');
+  assert.equal(fromWs.name, undefined);
+  assert.equal(fromWs.nameFromWorkspace, true);
+  assert.ok(fromWs.dependencies.has('vexide'));
+});
+
+test('Rust: a package whose name comes from its workspace runs whatever it built', () => {
+  const r = path.join('w', 'robot');
+  const bin = path.join(r, 'target', 'thumbv7a-vex-v5', 'debug', 'robot.bin');
+  const p = cargoProject(r, fakeFs({
+    [path.join(r, 'Cargo.toml')]: [1, '[package]\nname.workspace = true\n[dependencies]\nvexide = "0.9"\n'],
+    [bin]: [5],
+  }))!;
+  assert.equal(p.label, 'Rust project robot');
+  assert.deepEqual(p.program, { kind: 'bin', file: bin });
 });

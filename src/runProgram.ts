@@ -11,6 +11,7 @@ import * as vscode from 'vscode';
 import { FileProgram, Fs, Program, Project, describe, isVexideCargo, programForEditor, programForFile, project, projectRoot, pythonVm } from './programs';
 import { isWindows, onPath, sh, terminalEnv } from './runner';
 import { installUsbDriver } from './usbDriver';
+import { upToDate } from './buildFirst';
 import { slotSetting } from './settings';
 import { Running, SimInstance } from './simInstance';
 
@@ -126,8 +127,12 @@ export async function runProgram(sim: SimInstance, given?: string): Promise<void
 }
 
 /** Install the program in slot and start it: the sim restarts with --run
- *  (and --link for a hot/cold pair or a Python program). */
-export async function runOn(sim: SimInstance, program: Program, slot: number): Promise<void> {
+ *  (and --link for a hot/cold pair or a Python program). A build older
+ *  than its source is warned about first, unless it was just built
+ *  (fresh: the after-build offer). */
+export async function runOn(sim: SimInstance, given: Program, slot: number, opts: { fresh?: boolean } = {}): Promise<void> {
+  const program = opts.fresh ? given : await upToDate(given, diskFs, vexSdk);
+  if (!program) return;
   if (sim.state !== 'stopped' && !sim.owned) {
     const ok = await vscode.window.showWarningMessage(
       `Restart simulator instance ${sim.current?.id ?? ''} from VS Code to run ${describe(program)}?`,
@@ -205,7 +210,7 @@ async function cargoUpload(sim: SimInstance, folder: string, slot: number): Prom
   if (!target || await refusedOnWslSerial(target, 'cargo-v5')) return;
   const term = vscode.window.createTerminal({ name: `cargo v5 upload (sim ${target.id})`, cwd: folder, env: terminalEnv() });
   term.show();
-  term.sendText(`cargo v5 upload --slot ${slot}`);
+  term.sendText(`cargo v5 upload --slot ${slot} --after run`);
 }
 
 /** The program's output: pros terminal (or screen) on the sim's user port. */

@@ -11,6 +11,7 @@ import { isMac, isWindows, usbipExe } from './runner';
 import { cfg, slotSetting } from './settings';
 import { SimInstance } from './simInstance';
 import { reporting } from './errors/errorReporting';
+import { buildingHere } from './buildFirst';
 
 const TIP_KEY = 'v5sim.macRunTipShown';
 /** A build writes its .bin more than once: offer once it has settled. */
@@ -40,12 +41,14 @@ export function initRunOnSim(context: vscode.ExtensionContext, sim: SimInstance,
   const timers = new Map<string, ReturnType<typeof setTimeout>>();
   const built = (uri: vscode.Uri) => {
     const file = uri.fsPath;
+    if (/slot_\d+\.base\.bin$/i.test(file)) return;           // cargo-v5's differential base
     const root = projectRoot(file, diskFs);
     if (!root && !isProgramBuild(file)) return;
     const key = root ?? file;
     clearTimeout(timers.get(key));
     timers.set(key, setTimeout(() => {
       timers.delete(key);
+      if (root && buildingHere(root)) return;      // "Build and run" built it and runs it
       log?.appendLine(`[v5sim] new build: ${file}`);
       void reporting('run-on-sim', "Couldn't run the new build on the simulator", () => offerBuild(sim, file, root));
     }, SETTLE_MS));
@@ -55,6 +58,10 @@ export function initRunOnSim(context: vscode.ExtensionContext, sim: SimInstance,
   log?.appendLine('[v5sim] watching for builds (build/*.bin, bin/*.bin, target/*-vex-v5/*/*.bin) to offer Run on Sim');
   for (const w of watchers) context.subscriptions.push(w, w.onDidCreate(built), w.onDidChange(built));
   context.subscriptions.push({ dispose: () => timers.forEach(t => clearTimeout(t)) });
+  // a Cargo.toml created or edited later (cargo new, adding vexide)
+  const cargo = vscode.workspace.createFileSystemWatcher('**/Cargo.toml');
+  context.subscriptions.push(cargo, cargo.onDidCreate(() => void markVexProject()), cargo.onDidChange(() => void markVexProject()),
+    cargo.onDidDelete(() => void markVexProject()));
 }
 
 /** v5sim.vexProject / v5sim.rustProject: a VEXcode or vexide project is
@@ -62,7 +69,7 @@ export function initRunOnSim(context: vscode.ExtensionContext, sim: SimInstance,
 async function markVexProject(): Promise<void> {
   const found = await vscode.workspace.findFiles('**/.vscode/vex_project_settings.json', '**/node_modules/**', 1);
   await vscode.commands.executeCommand('setContext', 'v5sim.vexProject', found.length > 0);
-  const cargo = await vscode.workspace.findFiles('**/Cargo.toml', '**/{node_modules,target}/**', 20);
+  const cargo = await vscode.workspace.findFiles('**/Cargo.toml', '**/{node_modules,target}/**', 100);
   const rust = cargo.some(u => isVexideCargo(diskFs.read(u.fsPath) ?? ''));
   await vscode.commands.executeCommand('setContext', 'v5sim.rustProject', rust);
 }
@@ -130,7 +137,7 @@ let queued: (() => Promise<void>) | undefined;
  *  any other waiting, so only the newest runs next (no overlapping
  *  restarts, no "already starting"). */
 function runNewest(sim: SimInstance, program: Program, slot: number): Promise<void> {
-  const go = () => runOn(sim, program, slot);
+  const go = () => runOn(sim, program, slot, { fresh: true });   // just built: no out-of-date warning
   if (running) {
     queued = go;
     return running;

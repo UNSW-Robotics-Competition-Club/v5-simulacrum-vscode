@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- **Rust (vexide) projects**: a project whose `Cargo.toml` uses vexide (or has cargo-v5's `[package.metadata.v5]`) runs on the simulator like PROS and VEXcode ones: Run Program on Sim runs its newest `cargo v5 build` (`target/*-vex-v5/{debug,release}/<name>.bin`) in its `slot`, a new build is offered Run on Sim, and on Windows with the USB driver the picker offers `cargo v5 upload`.
+- **Out-of-date builds**: running a project whose build is older than its source warns first, with **Build and run** (`pros make`, `cargo v5 build`, or VEXcode's build) or **Run anyway**. Nothing builds unless you choose it.
+
 ## 0.3.14 (beta)
 
 - **Closing a pane while the simulator starts** no longer reports an error ("Webview is disposed").

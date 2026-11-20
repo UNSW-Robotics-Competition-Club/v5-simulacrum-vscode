@@ -105,6 +105,8 @@ export interface CargoManifest {
   /** crate names in [dependencies] and [workspace.dependencies] */
   dependencies: Set<string>;
   workspace: boolean;
+  /** name.workspace = true: the name is the workspace's */
+  nameFromWorkspace?: boolean;
 }
 
 /** A small TOML reader for the keys above: [sections], key = value lines,
@@ -127,16 +129,29 @@ export function readCargo(text: string): CargoManifest {
     }
     const kv = /^("[^"]+"|'[^']+'|[A-Za-z0-9_.-]+)\s*=\s*(.*)$/.exec(line);
     if (!kv) continue;
-    const key = unquote(kv[1]);
-    if (section === 'package' && key === 'name') out.name = unquote(kv[2]);
-    else if (section === 'package.metadata.v5' && key === 'slot') {
-      const n = Number(kv[2]);
-      if (Number.isInteger(n) && n >= 1 && n <= 8) out.slot = n;
-    } else if (section === 'dependencies' || section === 'workspace.dependencies') {
-      out.dependencies.add(key.split('.')[0]);
+    // the key from [package] down, so [package.metadata] v5.slot = 2 and
+    // [package] metadata.v5.slot = 2 read like [package.metadata.v5] slot = 2
+    const key = (section ? `${section}.` : '') + unquote(kv[1]);
+    const value = kv[2];
+    if (key === 'package.name') out.name = unquote(value);
+    else if (key === 'package.name.workspace') out.nameFromWorkspace = true;
+    else if (key === 'package.metadata.v5.slot') out.slot = slotOf(value);
+    else if (key === 'package.metadata.v5') {                    // v5 = { slot = 2, ... }
+      out.v5Metadata = true;
+      const slot = /\bslot\s*=\s*(\d+)/.exec(value);
+      if (slot) out.slot = slotOf(slot[1]);
+    } else if (key.startsWith('package.metadata.v5.')) {
+      out.v5Metadata = true;
     }
+    const dep = /^(?:workspace\.)?dependencies\.([^.]+)/.exec(key);
+    if (dep) out.dependencies.add(dep[1]);
   }
   return out;
+}
+
+function slotOf(value: string): number | undefined {
+  const n = Number(value.trim());
+  return Number.isInteger(n) && n >= 1 && n <= 8 ? n : undefined;
 }
 
 function stripTomlComment(line: string): string {
@@ -171,19 +186,76 @@ export function cargoProject(root: string, fs: Fs): Project | undefined {
   if (text === undefined) return undefined;
   const c = readCargo(text);
   if (!isVexideManifest(c)) return undefined;
-  if (!c.name) {
+  if (!c.name && c.workspace) {
     return { label: `Rust workspace ${path.basename(root)}`,
       problem: "it's a Cargo workspace: open the robot's own folder (the one whose Cargo.toml has a [package])" };
   }
-  const label = `Rust project ${c.name}`;
-  const names = [...new Set([c.name, c.name.replace(/-/g, '_')])];
-  const bins = RUST_TRIPLES.flatMap(t => RUST_PROFILES.flatMap(p => names.map(n => path.join(root, 'target', t, p, `${n}.bin`))))
-    .filter(f => fs.exists(f))
-    .sort((a, b) => fs.mtime(b) - fs.mtime(a));
-  if (!bins.length) return { label, slot: c.slot, problem: 'it has no build yet: build it first (cargo v5 build)' };
+  const label = `Rust project ${c.name ?? path.basename(root)}`;
+  // name.workspace = true: the name isn't here, so take whatever .bin is built
+  const named = (f: string) => !c.name || [c.name, c.name.replace(/-/g, '_')].includes(f.slice(0, -'.bin'.length));
+  const bins = RUST_TRIPLES.flatMap(t => RUST_PROFILES.flatMap(p => {
+    const dir = path.join(root, 'target', t, p);
+    return fs.list(dir).filter(f => /\.bin$/i.test(f) && !/^slot_\d+\.base\.bin$/i.test(f) && named(f)).map(f => path.join(dir, f));
+  })).sort((a, b) => fs.mtime(b) - fs.mtime(a));
+  if (!bins.length) {
+    return { label, slot: c.slot, problem: "it has no build in its target/ folder yet: build it first (cargo v5 build). " +
+      "A workspace member or a custom target-dir isn't supported yet" };
+  }
   const file = bins[0];
   const elf = file.slice(0, -'.bin'.length);
   return { label, slot: c.slot, program: fs.exists(elf) ? { kind: 'bin', file, elf } : { kind: 'bin', file } };
+}
+
+const C_SOURCE = /\.(c|cc|cpp|cxx|h|hh|hpp|hxx|inc|s)$/i;
+const RUST_SOURCE = /\.rs$/i;
+const MAX_SOURCE_ENTRIES = 20_000;
+const MAX_SOURCE_DEPTH = 10;
+
+/** The newest source file changed after the program was built, if any:
+ *  C/C++ files in src/ and include/ (PROS, VEXcode), or .rs files in src/
+ *  plus build.rs and Cargo.lock (Rust). Only files a build turns into a new
+ *  program count (not Cargo.toml: a comment there doesn't rebuild). A
+ *  Python program is its own source: never stale. */
+export function staleSource(root: string, program: Program, fs: Fs): string | undefined {
+  if (program.kind === 'python') return undefined;
+  const built = fs.mtime(program.file);
+  const cargo = fs.read(path.join(root, 'Cargo.toml'));
+  const rust = cargo !== undefined && isVexideCargo(cargo);
+  const dirs = rust ? ['src'] : ['src', 'include'];
+  const isSource = (name: string) => (rust ? RUST_SOURCE : C_SOURCE).test(name);
+  let newest: { file: string; mtime: number } | undefined;
+  const consider = (file: string) => {
+    const m = fs.mtime(file);
+    if (m > built && (!newest || m > newest.mtime)) newest = { file, mtime: m };
+  };
+  let seen = 0;
+  const visit = (dir: string, depth: number): void => {
+    for (const c of fs.list(dir)) {
+      if (++seen > MAX_SOURCE_ENTRIES) return;
+      if (c.startsWith('.') || c === 'node_modules') continue;   // hidden files, editor/VCS folders
+      const p = path.join(dir, c);
+      if (isSource(c)) consider(p);
+      else if (depth < MAX_SOURCE_DEPTH) visit(p, depth + 1);    // a file's list is empty
+    }
+  };
+  for (const d of dirs) visit(path.join(root, d), 0);
+  if (rust) for (const f of ['build.rs', 'Cargo.lock']) if (fs.exists(path.join(root, f))) consider(path.join(root, f));
+  return newest?.file;
+}
+
+/** How to build a project: a shell command in its folder, or a VS Code
+ *  command (VEXcode's extension builds VEXcode projects). */
+export type BuildStep = { shell: string } | { command: string };
+
+export function buildFor(root: string, program: Program, fs: Fs): BuildStep | undefined {
+  if (fs.exists(path.join(root, 'project.pros'))) return { shell: 'pros make' };
+  if (fs.exists(path.join(root, '.vscode', 'vex_project_settings.json'))) return { command: 'vexrobotics.vexcode.project.build' };
+  const cargo = fs.read(path.join(root, 'Cargo.toml'));
+  if (cargo !== undefined && isVexideCargo(cargo)) {
+    // the same profile as the build it replaces
+    return { shell: path.basename(path.dirname(program.file)) === 'release' ? 'cargo v5 build --release' : 'cargo v5 build' };
+  }
+  return undefined;
 }
 
 /** VEX's V5 MicroPython VM: the project's SDK version, else the newest. */
