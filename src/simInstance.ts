@@ -30,7 +30,7 @@ export type { Running };
 
 /** A program to install and run for this start only (not saved to settings);
  *  link: what it is linked to (a PROS cold package, VEX's Python VM). */
-export interface RunOnce { program: string; slot: number; link?: string }
+export interface RunOnce { program: string; slot: number; link?: string; /** start the GDB bridge (Debug on Sim) */ gdb?: boolean }
 
 export class SimInstance implements vscode.Disposable {
   state: State = 'stopped';
@@ -93,6 +93,7 @@ export class SimInstance implements vscode.Disposable {
           args.push('--link', await runner.stage(once.link));
         }
       }
+      if (once?.gdb) args.push('--gdb', 'auto');          // 35537 + instance id
       this.log.appendLine(`> v5brain.sh ${args.join(' ')}`);
       const proc = await runner.spawnScript('v5brain.sh', args);
       this.proc = proc;

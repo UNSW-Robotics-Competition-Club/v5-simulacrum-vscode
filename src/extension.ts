@@ -6,6 +6,7 @@ import { PortsPanel } from './panels/portsPanel';
 import { Page, WebPanel } from './panels/webPanel';
 import { initPrograms, programTerminal, runEditorProgram, runProgram } from './runProgram';
 import { initRunOnSim } from './runOnSim';
+import { initDebug } from './debug/debugOnSim';
 import { quietWhenClosed } from './safeLog';
 import { initRuntime, simRunner } from './runtime';
 import { cfg } from './settings';
@@ -117,6 +118,7 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(log, status, s);
   initPrograms(context, log);
   initRunOnSim(context, s, log);
+  initDebug(context, s, log);
 
   // the activity-bar view: its welcome content holds the buttons
   context.subscriptions.push(vscode.window.registerTreeDataProvider('v5sim.home', {

@@ -11,6 +11,7 @@ export interface Running {
   ttyUser?: string;
   usbipPort?: number;          // its USB/IP server on localhost (--usbip)
   uploadSock?: string;         // v5upload.py's way into its system port (no restart)
+  gdbPort?: number;            // v5gdb_bridge.py's GDB port on localhost (--gdb); output on +1
 }
 
 const LINE = /\[v5brain\] instance (\d+):[^\n]*/;
@@ -30,5 +31,7 @@ export function parseInstanceLine(text: string): Running | undefined {
   if (usbip) out.usbipPort = +usbip[1];
   const upload = /, upload (\S+?)(?:,|\s*$)/.exec(line[0]);
   if (upload) out.uploadSock = upload[1];
+  const gdb = /, GDB localhost:(\d+)/.exec(line[0]);
+  if (gdb) out.gdbPort = +gdb[1];
   return out;
 }

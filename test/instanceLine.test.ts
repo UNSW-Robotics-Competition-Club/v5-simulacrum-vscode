@@ -27,3 +27,8 @@ test('instance line with the upload socket (Run on Sim without a restart)', () =
   const ip = '[v5brain] instance 3: QMP q, log x, field view http://localhost:8768/, USB/IP localhost:3303 busid 1-1, upload /tmp/v5sim3/v5usb-host.sock';
   assert.deepEqual(parseInstanceLine(ip), { id: 3, viewPort: 8768, usbipPort: 3303, uploadSock: '/tmp/v5sim3/v5usb-host.sock' });
 });
+
+test('instance line with the GDB bridge (--gdb)', () => {
+  const t = '[v5brain] instance 2: QMP q, log x, field view http://localhost:8767/, upload /tmp/v5sim2/v5usb-host.sock, GDB localhost:35539';
+  assert.deepEqual(parseInstanceLine(t), { id: 2, viewPort: 8767, uploadSock: '/tmp/v5sim2/v5usb-host.sock', gdbPort: 35539 });
+});
