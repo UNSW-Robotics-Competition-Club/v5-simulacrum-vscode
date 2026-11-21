@@ -12,6 +12,8 @@ export const isMac = process.platform === 'darwin';
 /** The environment for the scripts. VS Code started from the macOS Dock gets
  *  a minimal PATH, without Homebrew (where the simulator's tools live). */
 function scriptEnv(): NodeJS.ProcessEnv {
+  // wsl.exe's own messages in UTF-8, not UTF-16 (WSL 0.64+)
+  if (isWindows) return { ...process.env, WSL_UTF8: '1' };
   if (!isMac) return process.env;
   const extra = ['/opt/homebrew/bin', '/usr/local/bin'];
   const path = (process.env.PATH ?? '/usr/bin:/bin').split(':');
@@ -29,6 +31,22 @@ export function envPrefix(opts: RunnerOptions): string {
   const parts = Object.entries(opts.env ?? {}).map(([k, v]) => `${k}=${sh(v)}`);
   if (opts.pathPrefix) parts.push(`PATH=${sh(opts.pathPrefix)}:"$PATH"`);
   return parts.length ? parts.join(' ') + ' ' : '';
+}
+
+/** wsl.exe's own messages (not the Linux command's) come as UTF-16 on WSL
+ *  without WSL_UTF8 support; read as UTF-8 they have a NUL after each
+ *  character. */
+export function wslText(s: string): string {
+  return s.replace(/\0/g, '');
+}
+
+/** Why wsl.exe couldn't run a command in the distro, in words for the user,
+ *  when it's the distro's state and not the command: its first-run setup
+ *  (OOBE: the Linux user name and password) isn't finished. */
+export function wslNotReady(stderr: string, distro: string): string | undefined {
+  if (!/OOBE/i.test(wslText(stderr))) return undefined;
+  return `${distro} hasn't finished its first-time setup. Finish it in the Install WSL terminal `
+    + `(or open ${distro} from the Start menu) by choosing a Linux user name and password, then start the simulator again`;
 }
 
 export interface RunResult { code: number; stdout: string; stderr: string }
@@ -60,6 +78,8 @@ export class Runner {
     if (!isWindows) return path.resolve(p);
     const r = await this.exec(['wslpath', '-a', p]);
     if (r.code !== 0 || !r.stdout.trim()) {
+      const notReady = wslNotReady(r.stderr, this.distro);
+      if (notReady) throw new Error(notReady);
       throw new Error(`wslpath couldn't convert ${p}: ${r.stderr.trim() || 'is WSL installed?'}`);
     }
     return r.stdout.trim();
@@ -153,7 +173,7 @@ export class Runner {
       p.on('close', code => {
         clearTimeout(timer);
         if (rest) onLine(rest);
-        resolve({ code: code ?? 1, stdout, stderr });
+        resolve({ code: code ?? 1, stdout, stderr: wslText(stderr) });
       });
     });
   }
@@ -163,7 +183,7 @@ export class Runner {
       execFile(cmd, argv, { timeout: timeoutMs, windowsHide: true, maxBuffer: 4 << 20, env: scriptEnv() },
         (err, stdout, stderr) => {
           const code = err ? (typeof (err as any).code === 'number' ? (err as any).code : 1) : 0;
-          resolve({ code, stdout: String(stdout), stderr: String(stderr || (err && !stderr ? err.message : '')) });
+          resolve({ code, stdout: String(stdout), stderr: wslText(String(stderr || (err && !stderr ? err.message : ''))) });
         });
     });
   }
