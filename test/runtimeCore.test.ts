@@ -5,7 +5,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 
-import { envPrefix } from '../src/runner';
+import { envPrefix, wslNotReady, wslText } from '../src/runner';
 import { UnpackProgress, bundledEnv, chooseMode, installScript, parseInstallOutput, parseWslList } from '../src/runtimeCore';
 
 test('unpack progress counts the install script TOTAL= and F lines', () => {
@@ -31,6 +31,18 @@ test('a checkout wins over the bundle; neither is none', () => {
 test('wsl -l -q output (UTF-16, NULs, CRLF)', () => {
   const raw = Buffer.from('Ubuntu-24.04\r\ndocker-desktop\r\n', 'utf16le');
   assert.deepEqual(parseWslList(raw), ['Ubuntu-24.04', 'docker-desktop']);
+});
+
+test("wsl.exe's UTF-16 messages read as UTF-8 lose their NULs", () => {
+  const raw = Buffer.from('wsl: Waiting for OOBE command to complete for distribution "Ubuntu-24.04"...\r\n', 'utf16le').toString();
+  assert.equal(wslText(raw), 'wsl: Waiting for OOBE command to complete for distribution "Ubuntu-24.04"...\r\n');
+});
+
+test('an unfinished first-run setup (OOBE) is told as such', () => {
+  const raw = Buffer.from('wsl: Waiting for OOBE command to complete for distribution "Ubuntu-24.04"...\r\n', 'utf16le').toString();
+  assert.match(wslNotReady(raw, 'Ubuntu-24.04') ?? '', /Ubuntu-24\.04 hasn't finished its first-time setup/);
+  assert.equal(wslNotReady('wslpath: /x: No such file or directory', 'Ubuntu-24.04'), undefined);
+  assert.equal(wslNotReady('', 'Ubuntu-24.04'), undefined);
 });
 
 test('environment assignments for bash -c', () => {
