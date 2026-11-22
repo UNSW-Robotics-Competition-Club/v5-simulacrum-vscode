@@ -29,6 +29,31 @@ export const WINGET_INSTALL_ARGS: readonly string[] = [
   '--accept-package-agreements', '--accept-source-agreements',
 ];
 
+/** Why a winget install didn't leave the driver installed. Only 'failed' is
+ *  a problem worth reporting; the rest are the user's choice or their PC's
+ *  state, and each gets its own advice. */
+export type WingetOutcome = 'cancelled' | 'restart' | 'blocked' | 'offline' | 'failed';
+
+/** winget's exit code (returnCodes.md, APPINSTALLER_CLI_ERROR_INSTALL_*) ->
+ *  what happened. undefined: the terminal was closed before winget ended. */
+export function wingetOutcome(code: number | undefined): WingetOutcome {
+  if (code === undefined) return 'cancelled';
+  switch (code >>> 0) {
+    case 0x8A15010C: return 'cancelled';        // INSTALL_CANCELLED_BY_USER (UAC "No", installer Cancel)
+    case 0x8A150109:                            // INSTALL_REBOOT_REQUIRED_TO_FINISH
+    case 0x8A15010A:                            // INSTALL_REBOOT_REQUIRED_FOR_INSTALL
+    case 0x8A15010B: return 'restart';          // INSTALL_REBOOT_INITIATED
+    case 0x8A15010F: return 'blocked';          // INSTALL_BLOCKED_BY_POLICY
+    case 0x8A150107: return 'offline';          // INSTALL_NO_NETWORK
+    default: return 'failed';
+  }
+}
+
+/** -1978334964 -> "0x8A15010C", as winget's docs list its codes. */
+export function wingetCodeHex(code: number): string {
+  return `0x${(code >>> 0).toString(16).toUpperCase().padStart(8, '0')}`;
+}
+
 const ATTACH_TIMEOUT_MS = 30_000;
 const LISTEN_WAIT_MS = 15_000;
 const LISTEN_POLL_MS = 250;

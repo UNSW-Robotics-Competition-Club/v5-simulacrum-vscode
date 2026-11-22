@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   INTEROP_REPAIR, USBIP_PINNED_VERSION, USBIP_RELEASE_URL, USBIP_WINGET_ID, WINGET_INSTALL_ARGS,
-  attachedVport, parseAttachedPort, resolveVport,
+  attachedVport, parseAttachedPort, resolveVport, wingetCodeHex, wingetOutcome,
 } from '../src/usbip';
 
 const PORT_OUT = `Imported USB devices
@@ -53,4 +53,25 @@ test('the attached port comes from usbip port when attach output does not say', 
 
 test('the interop repair creates /etc/binfmt.d first', () => {
   assert.match(INTEROP_REPAIR, /^mkdir -p \/etc\/binfmt\.d && /);
+});
+
+test('a cancelled driver install is not a failure', () => {
+  assert.equal(wingetOutcome(-1978334964), 'cancelled');        // 0x8A15010C: UAC "No" or installer Cancel
+  assert.equal(wingetOutcome(0x8A15010C), 'cancelled');         // unsigned form
+  assert.equal(wingetOutcome(undefined), 'cancelled');          // terminal closed first
+});
+
+test('winget exit codes that are the PC, not the extension', () => {
+  assert.equal(wingetOutcome(-1978334967), 'restart');          // 0x8A150109 reboot to finish
+  assert.equal(wingetOutcome(-1978334966), 'restart');
+  assert.equal(wingetOutcome(-1978334965), 'restart');
+  assert.equal(wingetOutcome(-1978334961), 'blocked');          // 0x8A15010F policy
+  assert.equal(wingetOutcome(-1978334969), 'offline');          // 0x8A150107
+});
+
+test('other winget exit codes are failures, shown as winget lists them', () => {
+  assert.equal(wingetOutcome(-1978334955), 'failed');           // 0x8A150115 installer error
+  assert.equal(wingetOutcome(1), 'failed');
+  assert.equal(wingetCodeHex(-1978334964), '0x8A15010C');
+  assert.equal(wingetCodeHex(1), '0x00000001');
 });
