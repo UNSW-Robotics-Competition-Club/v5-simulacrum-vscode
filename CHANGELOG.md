@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.15 (beta)
 
 - **Cancelling the USB driver install** (saying No to Windows' admin prompt, cancelling the installer, or closing its terminal) now says it was cancelled and offers **Try again**, instead of "Couldn't install the USB driver (winget exited with code -1978334964)", and is no longer sent as an error report. A restart Windows needs to finish the install, an organization policy that blocks it, or no internet each get their own message too; other winget failures show the code as winget lists it (e.g. `0x8A150115`).
 
